@@ -1,0 +1,1010 @@
+[
+    {
+        "player1": "LasloDjere",
+        "player2": "NovakDjokovic",
+        "odds": [
+            25,
+            1.01 
+        ]
+    },
+    {
+        "player1": "IgaSwiatek",
+        "player2": "EnaShibahara",
+        "odds": [
+            1.01,
+            25
+        ]
+    },
+    {
+        "player1": "ElisabettaCocciaretto",
+        "player2": "AnastasiaPavlyuchenkova",
+        "odds": [
+            2.5,
+            1.52
+        ]
+    },
+    {
+        "player1": "VictoriaAzarenka",
+        "player2": "ClaraBurel",
+        "odds": [
+            1.2,
+            4.5
+        ]
+    },
+    {
+        "player1": "DianeParry",
+        "player2": "YafanWang",
+        "odds": [
+            2.15,
+            1.68
+        ]
+    },
+    {
+        "player1": "EmmaNavarro",
+        "player2": "ArantxaRus",
+        "odds": [
+            1.13,
+            5.9
+        ]
+    },
+    {
+        "player1": "HarrietDart",
+        "player2": "MartaKostyuk",
+        "odds": [
+            4.3,
+            1.22
+        ]
+    },
+    {
+        "player1": "ElinaSvitolina",
+        "player2": "AnhelinaKalinina",
+        "odds": [
+            1.25,
+            3.9
+        ]
+    },
+    {
+        "player1": "TatjanaMaria",
+        "player2": "CoriGauff",
+        "odds": [
+            20,
+            1.02
+        ]
+    },
+    {
+        "player1": "QinwenZheng",
+        "player2": "ErikaAndreeva",
+        "odds": [
+            1.13,
+            5.9
+        ]
+    },
+    {
+        "player1": "MoyukaUchijima",
+        "player2": "JuleNiemeier",
+        "odds": [
+            4.1,
+            1.18
+        ]
+    },
+    {
+        "player1": "DonnaVekic",
+        "player2": "GreetMinnen",
+        "odds": [
+            1.31,
+            3.45
+        ]
+    },
+    {
+        "player1": "PeytonStearns",
+        "player2": "DariaKasatkina",
+        "odds": [
+            2.05,
+            1.74
+        ]
+    },
+    {
+        "player1": "MadisonKeys",
+        "player2": "MayaJoint",
+        "odds": [
+            1.15,
+            4.5
+        ]
+    },
+    {
+        "player1": "AjlaTomljanovic",
+        "player2": "EliseMertens",
+        "odds": [
+            38,
+            1
+        ]
+    },
+    {
+        "player1": "EkaterinaAlexandrova",
+        "player2": "IvaJovic",
+        "odds": [
+            1.32,
+            3.4
+        ]
+    },
+    {
+        "player1": "LuciaBronzetti",
+        "player2": "ArynaSabalenka",
+        "odds": [
+            13,
+            1.02
+        ]
+    },
+    {
+        "player1": "MirraAndreeva",
+        "player2": "AshlynKrueger",
+        "odds": [
+            1.22,
+            4.3
+        ]
+    },
+    {
+        "player1": "MarieBouzkova",
+        "player2": "LudmillaSamsonova",
+        "odds": [
+            2.5,
+            1.52
+        ]
+    },
+    {
+        "player1": "CarolineDolehide",
+        "player2": "SaraErrani",
+        "odds": [
+            1.26,
+            3.85
+        ]
+    },
+    {
+        "player1": "ClaraTauson",
+        "player2": "DianaShnaider",
+        "odds": [
+            3.7,
+            1.28
+        ]
+    },
+    {
+        "player1": "KatieBoulter",
+        "player2": "JessicaBouzasManeiro",
+        "odds": [
+            1.52,
+            2.5
+        ]
+    },
+    {
+        "player1": "SofiaKenin",
+        "player2": "JessicaPegula",
+        "odds": [
+            6.5,
+            1.11
+        ]
+    },
+    {
+        "player1": "ElenaRybakina",
+        "player2": "JessikaPonchet",
+        "odds": [
+            1.03,
+            12
+        ]
+    },
+    {
+        "player1": "CarolineWozniacki",
+        "player2": "RenataZarazua",
+        "odds": [
+            1.18,
+            4.7
+        ]
+    },
+    {
+        "player1": "BeatrizHaddadMaia",
+        "player2": "SaraSorribesTormo",
+        "odds": [
+            1.26,
+            3.8
+        ]
+    },
+    {
+        "player1": "AnnaBondar",
+        "player2": "AnnaKalinskaya",
+        "odds": [
+            5.2,
+            1.16
+        ]
+    },
+    {
+        "player1": "NaomiOsaka",
+        "player2": "KarolinaMuchova",
+        "odds": [
+            1.64,
+            2.25
+        ]
+    },
+    {
+        "player1": "VarvaraLepchenko",
+        "player2": "AnastasiaPotapova",
+        "odds": [
+            4.9,
+            1.17
+        ]
+    },
+    {
+        "player1": "YuliaPutintseva",
+        "player2": "XinyuWang",
+        "odds": [
+            1.56,
+            2.4
+        ]
+    },
+    {
+        "player1": "KarolinaPliskova",
+        "player2": "JasminePaolini",
+        "odds": [
+            3.25,
+            1.34
+        ]
+    },
+    {
+        "player1": "BarboraKrejcikova",
+        "player2": "ElenaGabrielaRuse",
+        "odds": [
+            2.05,
+            1.56
+        ]
+    },
+    {
+        "player1": "TaylorTownsend",
+        "player2": "PaulaBadosa",
+        "odds": [
+            3.4,
+            1.25
+        ]
+    },
+    {
+        "player1": "JannikSinner",
+        "player2": "AlexMichelsen",
+        "odds": [
+            1.04,
+            11.5
+        ]
+    },
+    {
+        "player1": "MattiaBellucci",
+        "player2": "ChristopherO'Connell",
+        "odds": [
+            1.39,
+            3
+        ]
+    },
+    {
+        "player1": "ArthurFils",
+        "player2": "GabrielDiallo",
+        "odds": [
+            1.36,
+            3.15
+        ]
+    },
+    {
+        "player1": "MatteoBerrettini",
+        "player2": "TaylorFritz",
+        "odds": [
+            2.4,
+            1.56
+        ]
+    },
+    {
+        "player1": "BrandonNakashima",
+        "player2": "ArthurCazaux",
+        "odds": [
+            1.25,
+            3.95
+        ]
+    },
+    {
+        "player1": "MiomirKecmanovic",
+        "player2": "LorenzoMusetti",
+        "odds": [
+            2.85,
+            1.42
+        ]
+    },
+    {
+        "player1": "FranciscoCerundolo",
+        "player2": "TomasMartinEtcheverry",
+        "odds": [
+            3.4,
+            1.25
+        ]
+    },
+    {
+        "player1": "AlexandreMuller",
+        "player2": "AlexanderZverev",
+        "odds": [
+            15,
+            1.03
+        ]
+    },
+    {
+        "player1": "AndreyRublev",
+        "player2": "ArthurRinderknech",
+        "odds": [
+            1.11,
+            6.5
+        ]
+    },
+    {
+        "player1": "MitchellKrueger",
+        "player2": "JiriLehecka",
+        "odds": [
+            1.24,
+            3.45
+        ]
+    },
+    {
+        "player1": "SebastianBaez",
+        "player2": "TallonGriekspoor",
+        "odds": [
+            2.45,
+            1.54
+        ]
+    },
+    {
+        "player1": "RinkyHijikata",
+        "player2": "GrigorDimitrov",
+        "odds": [
+            9,
+            1.02
+        ]
+    },
+    {
+        "player1": "BenShelton",
+        "player2": "RobertoBautista-Agut",
+        "odds": [
+            1.17,
+            5.1
+        ]
+    },
+    {
+        "player1": "AlexanderShevchenko",
+        "player2": "FrancesTiafoe",
+        "odds": [
+            5.6,
+            1.14
+        ]
+    },
+    {
+        "player1": "AlexeiPopyrin",
+        "player2": "PedroMartinez",
+        "odds": [
+            1.15,
+            5.4
+        ]
+    },
+    {
+        "player1": "MaxPurcell",
+        "player2": "TommyPaul",
+        "odds": [
+            6.75,
+            1.1
+        ]
+    },
+    {
+        "player1": "ThanasiKokkinakis",
+        "player2": "NunoBorges",
+        "odds": [
+            1.72,
+            2.1
+        ]
+    },
+    {
+        "player1": "TristanSchoolkate",
+        "player2": "JakubMensik",
+        "odds": [
+            5.2,
+            1.16
+        ]
+    },
+    {
+        "player1": "FlavioCobolli",
+        "player2": "ZizouBergs",
+        "odds": [
+            1.49,
+            2.6
+        ]
+    },
+    {
+        "player1": "FabianMarozsan",
+        "player2": "DaniilMedvedev",
+        "odds": [
+            6.75,
+            1.1
+        ]
+    },
+    {
+        "player1": "CarlosAlcaraz",
+        "player2": "BoticVanDeZandschulp",
+        "odds": [
+            1.02,
+            20
+        ]
+    },
+    {
+        "player1": "FacundoDiazAcosta",
+        "player2": "JackDraper",
+        "odds": [
+            9,
+            1.06
+        ]
+    },
+    {
+        "player1": "DavidGoffin",
+        "player2": "AdrianMannarino",
+        "odds": [
+            1.49,
+            2.6
+        ]
+    },
+    {
+        "player1": "TomasMachac",
+        "player2": "SebastianKorda",
+        "odds": [
+            3.15,
+            1.35
+        ]
+    },
+    {
+        "player1": "AlexDeMinaur",
+        "player2": "OttoVirtanen",
+        "odds": [
+            1.17,
+            5
+        ]
+    },
+    {
+        "player1": "MarianoNavone",
+        "player2": "DanielEvans",
+        "odds": [
+            2,
+            1.78
+        ]
+    },
+    {
+        "player1": "MatteoArnaldi",
+        "player2": "RomanSafiullin",
+        "odds": [
+            1.56,
+            2.4
+        ]
+    },
+    {
+        "player1": "JordanThompson",
+        "player2": "HubertHurkacz",
+        "odds": [
+            2.7,
+            1.45
+        ]
+    },
+    {
+        "player1": "CasperRuud",
+        "player2": "GaëlMonfils",
+        "odds": [
+            1.5,
+            2.55
+        ]
+    },
+    {
+        "player1": "RobertoCarballesBaena",
+        "player2": "JunchengShang",
+        "odds": [
+            3.4,
+            1.32
+        ]
+    },
+    {
+        "player1": "UgoHumbert",
+        "player2": "FranciscoComesana",
+        "odds": [
+            1.08,
+            8
+        ]
+    },
+    {
+        "player1": "K.Mladenovic/S.Zhang",
+        "player2": "S.W.Hsieh/E.Mertens",
+        "odds": [
+            3.65,
+            1.19
+        ]
+    },
+    {
+        "player1": "A.Potapova/Y.Sizikova",
+        "player2": "M.Linette/P.Stearns",
+        "odds": [
+            2.2,
+            1.5
+        ]
+    },
+    {
+        "player1": "O.Gadecki/F.Wu",
+        "player2": "C.Osorio/A.Parks",
+        "odds": [
+            2.45,
+            1.42
+        ]
+    },
+    {
+        "player1": "C.Bucsa/Y.Xu",
+        "player2": "M.Andreeva/A.Pavlyuchenkova",
+        "odds": [
+            2.1,
+            1.56
+        ]
+    },
+    {
+        "player1": "A.Krueger/S.Stephens",
+        "player2": "M.Bouzkova/S.SorribesTormo",
+        "odds": [
+            2.45,
+            1.43
+        ]
+    },
+    {
+        "player1": "K.Rakhimova/A.Sasnovich",
+        "player2": "E.Avanesyan/K.Piter",
+        "odds": [
+            1.5,
+            2.25
+        ]
+    },
+    {
+        "player1": "D.Collins/C.Garcia",
+        "player2": "A.S.Rogers/A.Smith",
+        "odds": [
+            1.11,
+            4.8
+        ]
+    },
+    {
+        "player1": "N.Melichar/E.Perez",
+        "player2": "M.Kessler/S.Santamaria",
+        "odds": [
+            1.03,
+            13
+        ]
+    },
+    {
+        "player1": "L.Bronzetti/L.Samsonova",
+        "player2": "K.Siniakova/T.Townsend",
+        "odds": [
+            5.4,
+            1.07
+        ]
+    },
+    {
+        "player1": "K.Kozlova/K.Volynets",
+        "player2": "M.Kostyuk/E.Ruse",
+        "odds": [
+            4.4,
+            1.12
+        ]
+    },
+    {
+        "player1": "A.Muhammad/H.Watson",
+        "player2": "M.Uchijima/Y.Yuan",
+        "odds": [
+            1.28,
+            3
+        ]
+    },
+    {
+        "player1": "G.Olmos/A.Panova",
+        "player2": "A.Rus/N.Stojanovic",
+        "odds": [
+            1.36,
+            2.6
+        ]
+    },
+    {
+        "player1": "T.Babos/N.Kichenok",
+        "player2": "S.Kenin/B.Mattek-Sands",
+        "odds": [
+            3.05,
+            1.29
+        ]
+    },
+    {
+        "player1": "M.Lumsden/A.Siskova",
+        "player2": "H.Guo/M.Niculescu",
+        "odds": [
+            3.35,
+            1.24
+        ]
+    },
+    {
+        "player1": "K.Boulter/A.Kalinskaya",
+        "player2": "Xin.Wang/S.Zheng",
+        "odds": [
+            2.05,
+            1.6
+        ]
+    },
+    {
+        "player1": "D.Schuurs/L.Stefani",
+        "player2": "S.Aoyama/E.Hozumi",
+        "odds": [
+            1.07,
+            7
+        ]
+    },
+    {
+        "player1": "J.Aney/J.Failla",
+        "player2": "L.Kichenok/J.Ostapenko",
+        "odds": [
+            6.75,
+            1.05
+        ]
+    },
+    {
+        "player1": "X.Jiang/M.Ninomiya",
+        "player2": "A.Bondar/C.Burel",
+        "odds": [
+            1.23,
+            3.3
+        ]
+    },
+    {
+        "player1": "S.MurraySharan/C.Rosatello",
+        "player2": "R.Montgomery/C.Ngounoue",
+        "odds": [
+            2.6,
+            1.39
+        ]
+    },
+    {
+        "player1": "B.HaddadMaia/L.Siegemund",
+        "player2": "V.Gracheva/O.Kalashnikova",
+        "odds": [
+            1.02,
+            8
+        ]
+    },
+    {
+        "player1": "T.Maria/A.K.Schmiedlova",
+        "player2": "E.Shibahara/A.Sutjiadi",
+        "odds": [
+            5.9,
+            1.06
+        ]
+    },
+    {
+        "player1": "L.Sun/X.Wang",
+        "player2": "T.Mihalikova/O.Nicholls",
+        "odds": [
+            2.15,
+            1.52
+        ]
+    },
+    {
+        "player1": "A.Danilina/I.Khromacheva",
+        "player2": "T.C.Grant/I.Jovic",
+        "odds": [
+            1.11,
+            4.6
+        ]
+    },
+    {
+        "player1": "C.Dolehide/D.Krawczyk",
+        "player2": "H.Baptiste/W.Osuigwe",
+        "odds": [
+            1.06,
+            6
+        ]
+    },
+    {
+        "player1": "M.Kato/Y.Wang",
+        "player2": "S.Errani/J.Paolini",
+        "odds": [
+            3.35,
+            1.22
+        ]
+    },
+    {
+        "player1": "H.Dart/D.Parry",
+        "player2": "L.Noskova/D.Shnaider",
+        "odds": [
+            2.15,
+            1.52
+        ]
+    },
+    {
+        "player1": "E.Alexandrova/A.Blinkova",
+        "player2": "C.Corley/I.Corley",
+        "odds": [
+            1.34,
+            2.75
+        ]
+    },
+    {
+        "player1": "J.A.Cristian/A.Moratelli",
+        "player2": "U.Eikeri/I.Neel",
+        "odds": [
+            1,
+            32
+        ]
+    },
+    {
+        "player1": "P.Martic/S.Rogers",
+        "player2": "A.Tomljanovic/V.Tomova",
+        "odds": [
+            1.74,
+            1.9
+        ]
+    },
+    {
+        "player1": "A.Kalinina/M.Trevisan",
+        "player2": "C.Harrison/A.Rosolska",
+        "odds": [
+            1.35,
+            2.65
+        ]
+    },
+    {
+        "player1": "G.Dabrowski/E.Routliffe",
+        "player2": "L.A.Fernandez/Y.Putintseva",
+        "odds": [
+            1.31,
+            2.85
+        ]
+    },
+    {
+        "player1": "S.Arends/R.Haase",
+        "player2": "R.Bopanna/M.Ebden",
+        "odds": [
+            3.55,
+            1.22
+        ]
+    },
+    {
+        "player1": "P.Kotov/T.SeybothWild",
+        "player2": "R.CarballesBaena/F.Coria",
+        "odds": [
+            1.49,
+            2.3
+        ]
+    },
+    {
+        "player1": "R.Cash/J.Tracy",
+        "player2": "S.Nagal/Y.Nishioka",
+        "odds": [
+            1.14,
+            4.4
+        ]
+    },
+    {
+        "player1": "M.Gonzalez/A.Molteni",
+        "player2": "N.Jarry/C.Rodriguez",
+        "odds": [
+            1.34,
+            2.75
+        ]
+    },
+    {
+        "player1": "G.Escobar/A.Nedovyesov",
+        "player2": "K.Krawietz/T.Puetz",
+        "odds": [
+            3.1,
+            1.28
+        ]
+    },
+    {
+        "player1": "A.Mannarino/A.Rinderknech",
+        "player2": "T.Monteiro/M.Navone",
+        "odds": [
+            1.32,
+            2.85
+        ]
+    },
+    {
+        "player1": "J.Murray/J.Peers",
+        "player2": "A.Goransson/S.Verbeek",
+        "odds": [
+            1.4,
+            2.55
+        ]
+    },
+    {
+        "player1": "S.Bolelli/A.Vavassori",
+        "player2": "W.Blumberg/C.Ruud",
+        "odds": [
+            1.27,
+            3.15
+        ]
+    },
+    {
+        "player1": "A.Fils/G.MpetshiPerricard",
+        "player2": "M.Arevalo/M.Pavic",
+        "odds": [
+            4.6,
+            1.12
+        ]
+    },
+    {
+        "player1": "S.Gille/J.Vliegen",
+        "player2": "M.Kecmanovic/R.Safiullin",
+        "odds": [
+            1.56,
+            2.1
+        ]
+    },
+    {
+        "player1": "N.Barrientos/S.Mansouri",
+        "player2": "N.S.Filin/A.Razeghi",
+        "odds": [
+            1.04,
+            7
+        ]
+    },
+    {
+        "player1": "I.Dodig/A.Pavlasek",
+        "player2": "C.Harrison/V.Kirkov",
+        "odds": [
+            1.35,
+            2.7
+        ]
+    },
+    {
+        "player1": "T.Boyer/E.Nava",
+        "player2": "S.Gonzalez/E.Roger-Vasselin",
+        "odds": [
+            2.3,
+            1.47
+        ]
+    },
+    {
+        "player1": "M.Mcdonald/A.Michelsen",
+        "player2": "J.Cash/R.Galloway",
+        "odds": [
+            2.1,
+            1.58
+        ]
+    },
+    {
+        "player1": "G.Andreozzi/N.S.Balaji",
+        "player2": "M.Daniell/M.A.Reyes-Varela",
+        "odds": [
+            1.56,
+            2.05
+        ]
+    },
+    {
+        "player1": "N.Skupski/M.Venus",
+        "player2": "H.Gaston/G.Jacq",
+        "odds": [
+            1.09,
+            5.2
+        ]
+    },
+    {
+        "player1": "S.Doumbia/M.Guinard",
+        "player2": "H.Heliovaara/H.Patten",
+        "odds": [
+            2.7,
+            1.35
+        ]
+    },
+    {
+        "player1": "F.Cobolli/D.S.Stricker",
+        "player2": "S.Kwon/D.Shapovalov",
+        "odds": [
+            1.74,
+            1.88
+        ]
+    },
+    {
+        "player1": "P.CarrenoBusta/S.MartosGornes",
+        "player2": "R.Matos/M.Melo",
+        "odds": [
+            3.55,
+            1.2
+        ]
+    },
+    {
+        "player1": "W.Koolhof/N.Mektic",
+        "player2": "T.Griekspoor/T.Kokkinakis",
+        "odds": [
+            1.39,
+            2.6
+        ]
+    },
+    {
+        "player1": "M.Krueger/R.Stalder",
+        "player2": "N.Lammons/J.Withrow",
+        "odds": [
+            4.7,
+            1.11
+        ]
+    },
+    {
+        "player1": "J.Eysseric/F.Martin",
+        "player2": "E.King/B.Nakashima",
+        "odds": [
+            2.1,
+            1.56
+        ]
+    },
+    {
+        "player1": "D.Hidalgo/A.Tabilo",
+        "player2": "L.Glasspool/R.Hijikata",
+        "odds": [
+            2.6,
+            1.39
+        ]
+    },
+    {
+        "player1": "R.Ram/J.Salisbury",
+        "player2": "F.DiazAcosta/T.M.Etcheverry",
+        "odds": [
+            1.04,
+            6.5
+        ]
+    },
+    {
+        "player1": "M.Giron/B.vandeZandschulp",
+        "player2": "M.Purcell/J.Thompson",
+        "odds": [
+            4.4,
+            1.14
+        ]
+    },
+    {
+        "player1": "N.Borges/F.Cabral",
+        "player2": "Z.Bergs/F.Marozsan",
+        "odds": [
+            1.31,
+            2.95
+        ]
+    },
+    {
+        "player1": "H.Nys/J.Zielinski",
+        "player2": "P.Martinez/J.Munar",
+        "odds": [
+            1.14,
+            4.2
+        ]
+    },
+    {
+        "player1": "C.Frantzen/H.Jebens",
+        "player2": "A.Krajicek/J-J.Rojer",
+        "odds": [
+            1.22,
+            3.65
+        ]
+    },
+    {
+        "player1": "A.Erler/M.Middelkoop",
+        "player2": "A.Behar/L.Johnson",
+        "odds": [
+            1.78,
+            1.8
+        ]
+    },
+    {
+        "player1": "M.Granollers/H.Zeballos",
+        "player2": "F.Cerundolo/C.UgoCarabelli",
+        "odds": [
+            1,
+            8
+        ]
+    },
+    {
+        "player1": "A.Muller/S.Ofner",
+        "player2": "A.Mies/J-P.Smith",
+        "odds": [
+            2.3,
+            1.49
+        ]
+    }
+]
