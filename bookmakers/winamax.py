@@ -134,4 +134,7 @@ foot_games=get_games_football(urls)
 with open('win_matches_foot.json', 'w', encoding='utf-8') as json_file:
     json.dump(foot_games, json_file, indent=4, ensure_ascii=False)
 
+with open('win_matches_tennis.json', 'w', encoding='utf-8') as json_file:
+    json.dump(tennis_games, json_file, indent=4, ensure_ascii=False)
+
 print("Données extraites et sauvegardées dans matches2.json")

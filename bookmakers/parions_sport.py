@@ -52,22 +52,23 @@ def get_games_tennis():
 
     matches = []
 
-    # Extraire les matchs
+    # Parcourir les événements de type `psel-event-main`
     for event in soup.find_all('psel-event-main'):
         # Extraire les noms des joueurs
-        players = event.find_all('p', class_='psel-market__label')
-        if len(players) == 2:
-            player1 = players[0]['title']
-            player2 = players[1]['title']
+        players = event.find_all('th', class_='psel-market__head')
+        if len(players) >= 2:  # Vérifier qu'il y a au moins 2 joueurs
+            player1 = players[0].text.strip()
+            player2 = players[1].text.strip()
 
             # Extraire les cotes
             odds = event.find_all('span', class_='psel-outcome__data')
-            if len(odds) == 2:
+            if len(odds) >= 2:  # Vérifier qu'il y a au moins 2 cotes
                 odds1 = odds[0].text.strip()
                 odds2 = odds[1].text.strip()
 
                 # Extraire la date
-                date = event.find('time', class_='psel-timer').text.strip()
+                date_tag = event.find('time', class_='psel-timer')
+                date = date_tag.text.strip() if date_tag else "Non spécifiée"
 
                 # Ajouter les informations dans la liste des matchs
                 matches.append({
@@ -77,6 +78,7 @@ def get_games_tennis():
                     'odds2': odds2,
                     'date': date
                 })
+
     return matches
 
 def get_games_football():
@@ -109,52 +111,46 @@ def get_games_football():
 
     matches = []
 
-    # Extraire les matchs
-    # Recherche chaque section de match
-    for match in soup.find_all('psel-row-col'):
-        odds = {}
-        
-        # Récupère les équipes et les cotes correspondantes
-        teams_and_draw = match.find_all('p', class_='psel-market__label')
-        odds_values = match.find_all('span', class_='psel-outcome__data')
+    # Rechercher les tables des matchs
+    for table in soup.find_all('table', class_='psel-market--row-col'):
+        # Extraire les joueurs depuis les en-têtes (thead ou th)
+        headers = table.find_all('th')
+        if len(headers) >= 2:
+            player1 = headers[0].text.strip()
+            player2 = headers[2].text.strip()
 
-        if len(teams_and_draw) == 3 and len(odds_values) == 3:
-            odds['team1'] = {
-                'name': teams_and_draw[0].get_text(strip=True),
-                'odd': odds_values[0].get_text(strip=True)
-            }
-            odds['draw'] = {
-                'name': teams_and_draw[1].get_text(strip=True),
-                'odd': odds_values[1].get_text(strip=True)
-            }
-            odds['team2'] = {
-                'name': teams_and_draw[2].get_text(strip=True),
-                'odd': odds_values[2].get_text(strip=True)
-            }
-            matches.append(odds)
+            # Extraire les cotes
+            odds = table.find_all('span', class_='psel-outcome__data')
+            if len(odds) >= 3:
+                odds1 = odds[0].text.strip()
+                odds2 = odds[1].text.strip()
+                odds3 = odds[2].text.strip()
+
+                # Extraire la date (si disponible)
+                date_tag = table.find_previous('time', class_='psel-timer')
+                date = date_tag.text.strip() if date_tag else "Non spécifiée"
+
+                # Ajouter les informations dans la liste
+                matches.append({
+                    'player1': player1,
+                    'player2': player2,
+                    'odds1': odds1,
+                    'draw': odds2,
+                    'odds3': odds3,
+                    'date': date
+                })
     
     return matches
 
-
-def transform_matches(data):
-    transformed_data = []
-    for match in data:
-        transformed_data.append({
-            "player1": match["team1"]["name"],
-            "player2": match["team2"]["name"],
-            "odds1": match["team1"]["odd"].replace(",", "."),
-            "odds2": match["draw"]["odd"].replace(",", "."),
-            "odds3": match["team2"]["odd"].replace(",", "."),
-            
-        })
-    return transformed_data
-
 # Convertir la liste en JSON
 json_data_tennis = json.dumps(get_games_tennis(), indent=4, ensure_ascii=False)
-json_data_football = json.dumps(transform_matches(get_games_football()), indent=4, ensure_ascii=False)
+json_data_football = json.dumps(get_games_football(), indent=4, ensure_ascii=False)
 
 # Sauvegarder dans un fichier JSON
 with open('pp_matches_foot.json', 'w', encoding='utf-8') as json_file:
     json_file.write(json_data_football)
+
+with open('pp_matches_tennis.json', 'w', encoding='utf-8') as json_file:
+    json_file.write(json_data_tennis)
 
 print("Données extraites et sauvegardées dans matches.json")
