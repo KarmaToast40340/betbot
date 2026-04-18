@@ -1,111 +1,240 @@
-import bookmakers.parions_sport as parions_sport
-import bookmakers.winamax as winamax
-import log
-from difflib import SequenceMatcher
+"""
+PokerBench Dataset Training Script
+Ce script charge et entraîne un modèle LLM sur le dataset PokerBench pour 
+prédire les décisions optimales au poker.
+"""
 
-win_urls=["https://www.winamax.fr/paris-sportifs/sports/5","https://www.winamax.fr/paris-sportifs/sports/1"]
+import os
+import json
+from typing import Dict, List
+from datasets import load_dataset, DatasetDict
+from transformers import (
+    AutoTokenizer, 
+    AutoModelForCausalLM,
+    TrainingArguments,
+    Trainer,
+    DataCollatorForLanguageModeling,
+)
+import torch
 
-
-
-
-def sof(valeur):
-    try:
-        if isinstance(valeur, (float, int)):
-            return float(valeur)
-        valeur = valeur.replace(',', '.')
-        return float(valeur)
-    except (ValueError, TypeError):
-        print(f"Erreur de conversion pour la valeur : {valeur}")
-        return None
-
-def same(pp, win):
-    s = pp
-    q = win
-    sous_chaine = s.split('.')[-1]
-    return sous_chaine in q and s[0] == q[0]
-
-def similarity_tennis(g, oth):
-    s = 0
-    p1, p2 = g['player1'], g['player2']
-    if same(p1, oth['player1']):
-        s += 1
-    if same(p2, oth['player2']):
-        s += 1
-    return s
-
-def str_similarity(a, b):
-	return SequenceMatcher(None, a, b).ratio()
-
-def find_best_match_football(game, others):
-	if (len(others) == 0 or game == None):
-		return None
-	m = 0
-	m_obj = None
-	for other in others:
-		sim = str_similarity(game['player1'], other['player1']) + str_similarity(game['player2'], other['player2'])
-		if (sim > m):
-			m = sim
-			m_obj = other
-	if (str_similarity(game['player1'], m_obj['player1']) < 0.81):
-		return None
-	if (str_similarity(game['player2'], m_obj['player2']) < 0.81):
-		return None
-	return m_obj
+# Configuration
+CONFIG = {
+    "dataset_name": "RZ412/PokerBench",
+    "model_name": "distilgpt2",  # Modèle léger pour démarrer
+    "max_seq_length": 512,
+    "batch_size": 8,
+    "learning_rate": 2e-5,
+    "num_epochs": 3,
+    "output_dir": "./poker_model_output",
+}
 
 
+def load_poker_dataset() -> Dict:
+    """Charge le dataset PokerBench de Hugging Face."""
+    print("📥 Chargement du dataset PokerBench...")
+    ds = load_dataset(CONFIG["dataset_name"])
+    print(f"✅ Dataset chargé avec succès")
+    print(f"Splits disponibles: {ds.keys()}")
+    return ds
 
-def find_best_match_tennis(g, others):
-    for i in range(len(others)):
-        if similarity_tennis(g, others[i]) == 2:
-            return others[i]
-    return None
 
-win_games_tennis = winamax.get_games_tennis(win_urls)
-win_games_football = winamax.get_games_football(win_urls)
-pp_games_tennis = parions_sport.get_games_tennis()
-pp_games_football = parions_sport.transform_matches(parions_sport.get_games_football())
-
-def arb(a, b):
-    return 1 - (1/a + 1/b) * 100
-def arb3(a, n, b):
-	return (1 - (1/a + 1/n + 1/b)) * 100
-
-def arb_games_tennis(g1, g2):
-    a1, a2 = sof(g1['odds1']), sof(g1['odds2'])
-    b1, b2 = sof(g2['odds1']), sof(g2['odds2'])
-    return float(max(arb(a1, b1), arb(a2, b2)))
-
-def arb_games_football(g1, g2):
-    a1, a2, a3 = sof(g1['odds1']), sof(g1['odds2']), sof(g1['odds3'])
-    b1, b2, b3 = sof(g2['odds1']), sof(g2['odds2']), sof(g2['odds3'])
-    return float(max(arb3(a1, a2, b3), arb3(a1, b2, a3), arb3(a1, b2, b3), arb3(b1, a2, a3), arb3(b1, a2, b3), arb3(b1, b2, a3)))
-
-for g in pp_games_tennis:
-    print(g)
-    other = find_best_match_tennis(g, win_games_tennis)
+def explore_dataset(ds: Dict) -> None:
+    """Explore la structure et le contenu du dataset."""
+    print("\n📊 Exploration du dataset:")
     
-    if other != None:
-        arb_value = arb_games_tennis(g, other)
+    for split_name, split_data in ds.items():
+        print(f"\n--- {split_name} ---")
+        print(f"Nombre d'exemples: {len(split_data)}")
         
-        # Vérifie si l'arbitrage est positif avant de loguer
-        if arb_value > 0:
-            log.discord(f"Arbitrage trouvé : {g['player1']} vs {g['player2']} ({g['odds1']} vs {g['odds2']})")
-        else:
-            print("Aucun arbitrage positif trouvé pour ce match. ~ ", arb_value)
-    else:
-        print("Aucun match correspondant trouvé.")
+        if len(split_data) > 0:
+            print(f"Colonnes: {split_data.column_names}")
+            
+            # Affiche un exemple
+            example = split_data[0]
+            print(f"\nExemple d'entrée:")
+            for key, value in example.items():
+                if isinstance(value, str):
+                    print(f"  {key}: {value[:200]}..." if len(str(value)) > 200 else f"  {key}: {value}")
+                else:
+                    print(f"  {key}: {value}")
 
-for g in pp_games_football:
-    print(g)
-    other = find_best_match_football(g, win_games_football)
+
+def prepare_dataset_for_training(ds: Dict) -> DatasetDict:
+    """Prépare le dataset pour l'entraînement en formatant les exemples."""
+    print("\n🔄 Préparation du dataset pour l'entraînement...")
     
-    if other != None:
-        arb_value = arb_games_football(g, other)
-        
-        # Vérifie si l'arbitrage est positif avant de loguer
-        if arb_value > 0:
-            log.discord(f"Arbitrage trouvé : {g['player1']} vs {g['player2']} ({g['odds1']} vs {g['odds2']})")
+    def format_example(example):
+        """Formate un exemple dans le format: instruction + output"""
+        # Suppose que le dataset a des colonnes 'instruction' et 'output'
+        if 'instruction' in example and 'output' in example:
+            text = f"{example['instruction']}\n{example['output']}"
         else:
-            print("Aucun arbitrage positif trouvé pour ce match. ~ ", arb_value)
+            # Fallback pour d'autres formats
+            text = json.dumps(example)
+        
+        return {"text": text}
+    
+    # Applique la transformation
+    processed_ds = {}
+    for split_name, split_data in ds.items():
+        if len(split_data) > 0:
+            processed_ds[split_name] = split_data.map(
+                format_example,
+                remove_columns=split_data.column_names
+            )
+            print(f"✅ {split_name} préparé: {len(processed_ds[split_name])} exemples")
+    
+    return processed_ds if processed_ds else ds
+
+
+def tokenize_function(examples: Dict, tokenizer, max_length: int = 512) -> Dict:
+    """Tokenize les textes pour l'entraînement."""
+    return tokenizer(
+        examples["text"] if "text" in examples else list(examples.values())[0],
+        padding="max_length",
+        truncation=True,
+        max_length=max_length,
+    )
+
+
+def setup_training(
+    dataset: DatasetDict,
+    tokenizer,
+    model,
+) -> Trainer:
+    """Configure le trainer pour l'entraînement."""
+    print("\n⚙️ Configuration du trainer...")
+    
+    # Tokenize le dataset
+    tokenized_dataset = dataset.map(
+        lambda x: tokenize_function(x, tokenizer, CONFIG["max_seq_length"]),
+        batched=True,
+        remove_columns=[col for col in dataset["train"].column_names if col != "text"]
+        if "train" in dataset else [],
+    )
+    
+    training_args = TrainingArguments(
+        output_dir=CONFIG["output_dir"],
+        overwrite_output_dir=True,
+        num_train_epochs=CONFIG["num_epochs"],
+        per_device_train_batch_size=CONFIG["batch_size"],
+        per_device_eval_batch_size=CONFIG["batch_size"],
+        save_steps=500,
+        save_total_limit=2,
+        logging_steps=100,
+        learning_rate=CONFIG["learning_rate"],
+        weight_decay=0.01,
+        warmup_steps=500,
+        evaluation_strategy="steps",
+        eval_steps=500,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+    )
+    
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,  # Pour la causal language modeling
+    )
+    
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_dataset.get("train"),
+        eval_dataset=tokenized_dataset.get("test") or tokenized_dataset.get("validation"),
+        data_collator=data_collator,
+    )
+    
+    return trainer
+
+
+def main():
+    """Fonction principale pour charger et entraîner le modèle."""
+    print("🎲 PokerBench Training Pipeline")
+    print("=" * 50)
+    
+    # 1. Charger le dataset
+    dataset = load_poker_dataset()
+    
+    # 2. Explorer le dataset
+    explore_dataset(dataset)
+    
+    # 3. Préparer le dataset
+    processed_dataset = prepare_dataset_for_training(dataset)
+    
+    # 4. Charger le modèle et le tokenizer
+    print(f"\n📦 Chargement du modèle {CONFIG['model_name']}...")
+    tokenizer = AutoTokenizer.from_pretrained(CONFIG["model_name"])
+    model = AutoModelForCausalLM.from_pretrained(CONFIG["model_name"])
+    
+    # Ajoute pad token si nécessaire
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    print(f"✅ Modèle chargé avec succès")
+    
+    # 5. Configuration et entraînement
+    trainer = setup_training(processed_dataset, tokenizer, model)
+    
+    # 6. Entraîner le modèle
+    print("\n🚀 Démarrage de l'entraînement...")
+    trainer.train()
+    
+    # 7. Sauvegarder le modèle entraîné
+    print(f"\n💾 Sauvegarde du modèle entraîné dans {CONFIG['output_dir']}...")
+    trainer.save_model(os.path.join(CONFIG["output_dir"], "final_model"))
+    tokenizer.save_pretrained(os.path.join(CONFIG["output_dir"], "final_model"))
+    
+    print("\n✅ Entraînement terminé avec succès!")
+    print(f"Modèle sauvegardé dans: {CONFIG['output_dir']}")
+
+
+def predict_poker_decision(prompt: str, model_path: str) -> str:
+    """
+    Utilise le modèle entraîné pour prédire une décision au poker.
+    
+    Args:
+        prompt: Description du scénario poker en langage naturel
+        model_path: Chemin vers le modèle entraîné
+    
+    Returns:
+        La décision prédite
+    """
+    print(f"\n🤔 Prédiction pour: {prompt[:100]}...")
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(model_path)
+    
+    # Tokenize l'entrée
+    inputs = tokenizer(prompt, return_tensors="pt")
+    
+    # Générer la prédiction
+    with torch.no_grad():
+        outputs = model.generate(
+            inputs["input_ids"],
+            max_new_tokens=50,
+            num_beams=5,
+            temperature=0.7,
+            top_p=0.9,
+        )
+    
+    # Décoder
+    decision = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return decision
+
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "predict":
+        # Mode prédiction
+        if len(sys.argv) < 4:
+            print("Usage: python main.py predict '<prompt>' '<model_path>'")
+            sys.exit(1)
+        
+        prompt = sys.argv[2]
+        model_path = sys.argv[3]
+        result = predict_poker_decision(prompt, model_path)
+        print(f"Décision: {result}")
     else:
-        print("Aucun match correspondant trouvé.")
+        # Mode entraînement
+        main()
