@@ -1,0 +1,18 @@
+services:
+  screenscraper:
+    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:latest-amd-gpu
+    container_name: betbot-paddleocr-vl
+    user: root
+    working_dir: /workspace
+    network_mode: host
+    shm_size: "64gb"
+    devices:
+      - "/dev:/dev"
+    volumes:
+      - ./:/workspace
+    environment:
+      PYTHONUNBUFFERED: "1"
+      BETBOT_INPUT_DIR: "/workspace/data/input"
+      BETBOT_OUTPUT_DIR: "/workspace/data/output"
+    command: python /workspace/ScreenScraper/roi_extractor.py
+    restart: unless-stopped
