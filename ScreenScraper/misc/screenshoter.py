@@ -13,6 +13,6 @@ with mss.mss() as sct:
     screenshot = sct.grab(monitor)
     
     # Sauvegarde
-    mss.tools.to_png(screenshot.rgb, screenshot.size, output="data/output/capture_zone.png")
+    mss.tools.to_png(screenshot.rgb, screenshot.size, output="data/input/capture_zone.png")
 
 print("Capture effectuée avec succès sous Xorg !")

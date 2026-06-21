@@ -1,18 +1,41 @@
 services:
-  screenscraper:
-    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:latest-amd-gpu
-    container_name: betbot-paddleocr-vl
+  paddleocr-vlm-server:
+    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-vllm-server:latest-amd-gpu
+    container_name: betbot-paddleocr-vlm-server
     user: root
-    working_dir: /workspace
-    network_mode: host
-    shm_size: "64gb"
     devices:
-      - "/dev:/dev"
+      - /dev:/dev
+    shm_size: "64gb"
+    network_mode: host
+    volumes:
+      - ./:/workspace
+    command: >
+      paddleocr genai_server
+      --model_name PaddleOCR-VL-1.6-0.9B
+      --host 0.0.0.0
+      --port 8118
+      --backend vllm
+      --backend_config /workspace/config/vllm_config.yaml
+    restart: unless-stopped
+
+  screenscraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: betbot-screenscraper
+    working_dir: /workspace
     volumes:
       - ./:/workspace
     environment:
       PYTHONUNBUFFERED: "1"
       BETBOT_INPUT_DIR: "/workspace/data/input"
       BETBOT_OUTPUT_DIR: "/workspace/data/output"
+      FLAGS_use_mkldnn: "0"
+      FLAGS_enable_onednn_fusion: "0"
+      PADDLEOCR_VL_SERVER_URL: "http://host.docker.internal:8118/v1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: python /workspace/ScreenScraper/roi_extractor.py
-    restart: unless-stopped
+    restart: "no"
+    depends_on:
+      - paddleocr-vlm-server
