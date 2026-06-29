@@ -6,3 +6,4 @@ langchain-text-splitters==0.2.4
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 Pillow==10.4.0
+mss==9.0.1
