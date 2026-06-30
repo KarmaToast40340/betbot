@@ -19,12 +19,12 @@ SERVER_URL = os.environ.get(
     "http://host.docker.internal:8118/v1"
 )
 
-MONITOR = {
-    "left": 3768,
-    "top": 498,
-    "width": 3992 - 3768,
-    "height": 1080 - 498,
-}
+# Vos coordonnées
+x1, y1 = 3745, 215
+x2, y2 = 3970, 821
+
+# Définition de la région
+MONITOR = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
 
 STREETS = ["PRE-FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"]
 ACTION_PATTERNS = [
