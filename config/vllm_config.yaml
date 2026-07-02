@@ -1,4 +1,4 @@
-gpu-memory-utilization: 0.85
+gpu-memory-utilization: 0.6
 max-model-len: 5048
 max-num-batched-tokens: 16384
 max-num-seqs: 1
