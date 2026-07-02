@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 from capture import capture_region_to_png
-from config import INPUT_PATH, LATEST_STATE_PATH, OUTPUT_DIR, RAW_OCR_PATH, SERVER_URL, STATE_LOG_PATH, MONITOR
+from config import INPUT_PATH, LATEST_STATE_PATH, MONITOR, OUTPUT_DIR, RAW_OCR_PATH, SERVER_URL, STATE_LOG_PATH
 from ocr_engine import run_ocr
 from parser import parse_ocr_document
 
@@ -12,37 +12,38 @@ from parser import parse_ocr_document
 def image_fingerprint(img):
     import cv2
 
-    ok, encoded = cv2.imencode('.png', img)
+    ok, encoded = cv2.imencode(".png", img)
     if not ok:
         return None
     return hashlib.sha256(encoded.tobytes()).hexdigest()
 
 
 def append_jsonl(path, obj):
-    with path.open('a', encoding='utf-8') as handle:
-        handle.write(json.dumps(obj, ensure_ascii=False) + '\n')
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
 def state_signature(state):
     compact = {
-        'hand_id': state.get('hand_id'),
-        'hero': state.get('hero', {}).get('name'),
-        'hero_cards': state.get('hero', {}).get('hole_cards_raw'),
-        'board': state.get('board', {}).get('all_cards'),
-        'current_street': state.get('current_street'),
-        'actions': [
+        "hand_id": state.get("hand_id"),
+        "hero": state.get("hero", {}).get("name"),
+        "hero_cards": state.get("hero", {}).get("hole_cards_raw"),
+        "board": state.get("board", {}).get("all_cards"),
+        "current_street": state.get("current_street"),
+        "actions": [
             {
-                'street': action.get('street'),
-                'player': action.get('player'),
-                'action': action.get('action'),
-                'amount_bb': action.get('amount_bb'),
+                "street": action.get("street"),
+                "player": action.get("player"),
+                "action": action.get("action"),
+                "amount_bb": action.get("amount_bb"),
+                "cards": action.get("cards"),
             }
-            for action in state.get('actions', [])
+            for action in state.get("actions", [])
         ],
-        'showdown': state.get('showdown'),
+        "showdown": state.get("showdown"),
     }
     payload = json.dumps(compact, ensure_ascii=False, sort_keys=True)
-    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def monitor_loop(interval_sec=1.0):
@@ -55,7 +56,7 @@ def monitor_loop(interval_sec=1.0):
     while True:
         img = capture_region_to_png(INPUT_PATH)
         if img is None:
-            print('Capture échouée.')
+            print("Capture échouée.")
             time.sleep(interval_sec)
             continue
 
@@ -68,7 +69,7 @@ def monitor_loop(interval_sec=1.0):
         print(f"\n[{datetime.now().isoformat(timespec='seconds')}] Changement visuel détecté, OCR...")
 
         raw_text, _artifacts = run_ocr(INPUT_PATH, OUTPUT_DIR)
-        RAW_OCR_PATH.write_text(raw_text, encoding='utf-8')
+        RAW_OCR_PATH.write_text(raw_text, encoding="utf-8")
 
         states = parse_ocr_document(raw_text, INPUT_PATH)
         if not states:
@@ -76,7 +77,7 @@ def monitor_loop(interval_sec=1.0):
             continue
 
         latest_state = states[-1]
-        LATEST_STATE_PATH.write_text(json.dumps(latest_state, ensure_ascii=False, indent=2), encoding='utf-8')
+        LATEST_STATE_PATH.write_text(json.dumps(latest_state, ensure_ascii=False, indent=2), encoding="utf-8")
 
         new_count = 0
         for state in states:
@@ -94,5 +95,5 @@ def monitor_loop(interval_sec=1.0):
         time.sleep(interval_sec)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     monitor_loop(interval_sec=1.0)

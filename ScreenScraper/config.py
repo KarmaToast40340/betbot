@@ -7,6 +7,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 DATA_DIR = PROJECT_ROOT / "data"
 INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
+
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -16,25 +17,20 @@ LATEST_STATE_PATH = OUTPUT_DIR / "latest_state.json"
 RAW_OCR_PATH = OUTPUT_DIR / "latest_ocr.txt"
 DEBUG_OCR_PATH = OUTPUT_DIR / "latest_ocr_debug.json"
 
-SERVER_URL = os.environ.get(
-    "PADDLEOCR_VL_SERVER_URL",
-    "http://host.docker.internal:8118/v1",
-)
+SERVER_URL = os.environ.get("PADDLEOCR_VL_SERVER_URL", "http://host.docker.internal:8118/v1")
 
 x1, y1 = 3745, 215
 x2, y2 = 3970, 821
 MONITOR = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
 
 STREETS = ["PRE-FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"]
-ACTION_PATTERNS = [
-    ("raise_to", r"Raises to\s+([0-9]+(?:\.[0-9]+)?)\s*BB"),
-    ("bet", r"Bets\s+([0-9]+(?:\.[0-9]+)?)\s*BB"),
-    ("call", r"Calls\s+([0-9]+(?:\.[0-9]+)?)\s*BB"),
-    ("post_small_blind", r"Post small blind.*?([0-9]+(?:\.[0-9]+)?)\s*BB"),
-    ("post_big_blind", r"Post big blind.*?([0-9]+(?:\.[0-9]+)?)\s*BB"),
-    ("check", r"^Check$"),
-    ("fold", r"^Fold$"),
-]
+STRUCTURAL_MARKERS = {
+    "CARDS DEALT": ("preflop", "cards_dealt"),
+    "FLOP": ("flop", "flop_start"),
+    "TURN": ("turn", "turn_start"),
+    "RIVER": ("river", "river_start"),
+    "SHOWDOWN": ("showdown", "showdown_start"),
+}
 
 SUIT_MAP = {
     "♥": "h",
@@ -43,19 +39,74 @@ SUIT_MAP = {
     "♢": "d",
     "♣": "c",
     "♠": "s",
+    "h": "h",
+    "d": "d",
+    "c": "c",
+    "s": "s",
 }
 
 CARD_RANK_RE = re.compile(r"\b(10|[2-9AKQJT])\b", re.IGNORECASE)
 CARD_SUIT_RE = re.compile(r"[♥♦♣♠♡♢]", re.IGNORECASE)
-CARD_LIKE_RE = re.compile(r"\b(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢])?\b", re.IGNORECASE)
-CARD_SECTION_RE = re.compile(
-    r"(CARDS DEALT)(.*?)(?=(?:\n\s*(?:PRE-FLOP|FLOP|TURN|RIVER|SHOWDOWN|Hand\s+.+))|\Z)",
-    re.IGNORECASE | re.DOTALL,
+CARD_LIKE_RE = re.compile(r"(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])?", re.IGNORECASE)
+CARD_ONLY_LINE_RE = re.compile(r"^\s*(?:(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])?\s*){1,5}$", re.IGNORECASE)
+COMPACT_TWO_CARD_RE = re.compile(r"^\s*(10|[2-9AKQJT])\s*(10|[2-9AKQJT])\s*$", re.IGNORECASE)
+MADE_HAND_RE = re.compile(
+    r"\b(PAIR|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
+    re.IGNORECASE,
 )
+SECTION_KEYWORD_RE = re.compile(r"\b(CARDS DEALT|PRE-FLOP|FLOP|TURN|RIVER|SHOWDOWN)\b", re.IGNORECASE)
 
-EXPECTED_HERO_CARD_COUNT = 2
+EXPECTED_CARD_COUNTS = {
+    "CARDS DEALT": 2,
+    "FLOP": 3,
+    "TURN": 4,
+    "RIVER": 5,
+}
+
 ROI_UPSCALE_FACTORS = [2, 3, 4]
 ROI_VARIANTS = ["base", "gray", "contrast", "sharp", "binary", "pad"]
+ROI_ANCHOR_PRESETS = {
+    "CARDS DEALT": {
+        "anchor_text": "CARDS DEALT",
+        "relative": True,
+        "offset": {"dx": 97.0, "dy": 2.0},
+        "size": {"w": 50.0, "h": 32.0},
+        "expand": [
+            {"left": 4, "top": 4, "right": 4, "bottom": 4},
+            {"left": 8, "top": 6, "right": 8, "bottom": 6},
+        ],
+    },
+    "FLOP": {
+        "anchor_text": "FLOP",
+        "relative": True,
+        "offset": {"dx": 96.0, "dy": -20.0},
+        "size": {"w": 113.0, "h": 15.0},
+        "expand": [
+            {"left": 4, "top": 4, "right": 4, "bottom": 4},
+            {"left": 8, "top": 6, "right": 8, "bottom": 6},
+        ],
+    },
+    "TURN": {
+        "anchor_text": "TURN",
+        "relative": True,
+        "offset": {"dx": 96.0, "dy": -62.0},
+        "size": {"w": 113.0, "h": 15.0},
+        "expand": [
+            {"left": 4, "top": 4, "right": 4, "bottom": 4},
+            {"left": 8, "top": 6, "right": 8, "bottom": 6},
+        ],
+    },
+    "RIVER": {
+        "anchor_text": "RIVER",
+        "relative": True,
+        "offset": {"dx": 96.0, "dy": 58.0},
+        "size": {"w": 68.0, "h": 13.0},
+        "expand": [
+            {"left": 4, "top": 4, "right": 4, "bottom": 4},
+            {"left": 8, "top": 6, "right": 8, "bottom": 6},
+        ],
+    },
+}
 
 
 def count_rank_tokens(text: str) -> int:

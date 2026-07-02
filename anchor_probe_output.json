@@ -1,0 +1,187 @@
+{
+  "report": [
+    {
+      "file": "/home/karma/Documents/betbot/data/output/ocr_vl_000.json",
+      "anchors": [
+        {
+          "anchor": "FLOP",
+          "anchor_bbox": [
+            0.0,
+            346.0,
+            40.0,
+            362.0
+          ],
+          "target_bbox": [
+            96.0,
+            326.0,
+            209.0,
+            341.0
+          ],
+          "target_label": "text",
+          "target_text": "text"
+        },
+        {
+          "anchor": "TURN",
+          "anchor_bbox": [
+            0.0,
+            388.0,
+            42.0,
+            405.0
+          ],
+          "target_bbox": [
+            96.0,
+            326.0,
+            209.0,
+            341.0
+          ],
+          "target_label": "text",
+          "target_text": "text"
+        },
+        {
+          "anchor": "RIVER",
+          "anchor_bbox": [
+            0.0,
+            430.0,
+            44.0,
+            446.0
+          ],
+          "target_bbox": [
+            96.0,
+            488.0,
+            164.0,
+            501.0
+          ],
+          "target_label": "text",
+          "target_text": "text"
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "CARDS DEALT": {
+      "dx": null,
+      "dy": null,
+      "w": null,
+      "h": null,
+      "samples": []
+    },
+    "FLOP": {
+      "dx": {
+        "count": 1,
+        "min": 96.0,
+        "max": 96.0,
+        "mean": 96.0,
+        "median": 96.0
+      },
+      "dy": {
+        "count": 1,
+        "min": -20.0,
+        "max": -20.0,
+        "mean": -20.0,
+        "median": -20.0
+      },
+      "w": {
+        "count": 1,
+        "min": 113.0,
+        "max": 113.0,
+        "mean": 113.0,
+        "median": 113.0
+      },
+      "h": {
+        "count": 1,
+        "min": 15.0,
+        "max": 15.0,
+        "mean": 15.0,
+        "median": 15.0
+      },
+      "samples": [
+        {
+          "dx": 96.0,
+          "dy": -20.0,
+          "w": 113.0,
+          "h": 15.0,
+          "source": "/home/karma/Documents/betbot/data/output/ocr_vl_000.json"
+        }
+      ]
+    },
+    "TURN": {
+      "dx": {
+        "count": 1,
+        "min": 96.0,
+        "max": 96.0,
+        "mean": 96.0,
+        "median": 96.0
+      },
+      "dy": {
+        "count": 1,
+        "min": -62.0,
+        "max": -62.0,
+        "mean": -62.0,
+        "median": -62.0
+      },
+      "w": {
+        "count": 1,
+        "min": 113.0,
+        "max": 113.0,
+        "mean": 113.0,
+        "median": 113.0
+      },
+      "h": {
+        "count": 1,
+        "min": 15.0,
+        "max": 15.0,
+        "mean": 15.0,
+        "median": 15.0
+      },
+      "samples": [
+        {
+          "dx": 96.0,
+          "dy": -62.0,
+          "w": 113.0,
+          "h": 15.0,
+          "source": "/home/karma/Documents/betbot/data/output/ocr_vl_000.json"
+        }
+      ]
+    },
+    "RIVER": {
+      "dx": {
+        "count": 1,
+        "min": 96.0,
+        "max": 96.0,
+        "mean": 96.0,
+        "median": 96.0
+      },
+      "dy": {
+        "count": 1,
+        "min": 58.0,
+        "max": 58.0,
+        "mean": 58.0,
+        "median": 58.0
+      },
+      "w": {
+        "count": 1,
+        "min": 68.0,
+        "max": 68.0,
+        "mean": 68.0,
+        "median": 68.0
+      },
+      "h": {
+        "count": 1,
+        "min": 13.0,
+        "max": 13.0,
+        "mean": 13.0,
+        "median": 13.0
+      },
+      "samples": [
+        {
+          "dx": 96.0,
+          "dy": 58.0,
+          "w": 68.0,
+          "h": 13.0,
+          "source": "/home/karma/Documents/betbot/data/output/ocr_vl_000.json"
+        }
+      ]
+    }
+  },
+  "config_block": "ROI_ANCHOR_PRESETS = {\n    \"CARDS DEALT\": {\n        \"anchor_text\": \"CARDS DEALT\",\n        \"relative\": True,\n        \"offset\": {\"dx\": 0, \"dy\": 0},\n        \"size\": {\"w\": 0, \"h\": 0},\n        \"expand\": [\n            {\"left\": 4, \"top\": 4, \"right\": 4, \"bottom\": 4},\n            {\"left\": 8, \"top\": 6, \"right\": 8, \"bottom\": 6},\n        ],\n    },\n    \"FLOP\": {\n        \"anchor_text\": \"FLOP\",\n        \"relative\": True,\n        \"offset\": {\"dx\": 96.0, \"dy\": -20.0},\n        \"size\": {\"w\": 113.0, \"h\": 15.0},\n        \"expand\": [\n            {\"left\": 4, \"top\": 4, \"right\": 4, \"bottom\": 4},\n            {\"left\": 8, \"top\": 6, \"right\": 8, \"bottom\": 6},\n        ],\n    },\n    \"TURN\": {\n        \"anchor_text\": \"TURN\",\n        \"relative\": True,\n        \"offset\": {\"dx\": 96.0, \"dy\": -62.0},\n        \"size\": {\"w\": 113.0, \"h\": 15.0},\n        \"expand\": [\n            {\"left\": 4, \"top\": 4, \"right\": 4, \"bottom\": 4},\n            {\"left\": 8, \"top\": 6, \"right\": 8, \"bottom\": 6},\n        ],\n    },\n    \"RIVER\": {\n        \"anchor_text\": \"RIVER\",\n        \"relative\": True,\n        \"offset\": {\"dx\": 96.0, \"dy\": 58.0},\n        \"size\": {\"w\": 68.0, \"h\": 13.0},\n        \"expand\": [\n            {\"left\": 4, \"top\": 4, \"right\": 4, \"bottom\": 4},\n            {\"left\": 8, \"top\": 6, \"right\": 8, \"bottom\": 6},\n        ],\n    },\n}"
+}

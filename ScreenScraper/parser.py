@@ -2,13 +2,21 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from config import STREETS, SUIT_MAP
-
+from config import STREETS, STRUCTURAL_MARKERS, SUIT_MAP
 
 HAND_LINE_RE = re.compile(r"^\s*Hand\s+(.+)$", re.IGNORECASE)
 AMOUNT_BB_RE = re.compile(r"\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?", re.IGNORECASE)
 CARD_WITH_SUIT_RE = re.compile(r"(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])", re.IGNORECASE)
 RANK_ONLY_RE = re.compile(r"\b(10|[2-9AKQJT])\b", re.IGNORECASE)
+INLINE_SHOWDOWN_RE = re.compile(r"^\s*SHOWDOWN\s+(.+?)\s*$", re.IGNORECASE)
+INLINE_RECEIVES_RE = re.compile(r"^\s*([A-Za-z0-9_][A-Za-z0-9_ ]*[A-Za-z0-9_])\s+RECEIVES\s*:\s*(.+)$", re.IGNORECASE)
+CARDISH_LINE_RE = re.compile(r"^\s*(?:(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])?\s*){1,5}$", re.IGNORECASE)
+COMPACT_HOLE_CARDS_RE = re.compile(r"^\s*(10|[2-9AKQJT])\s*(10|[2-9AKQJT])\s*$", re.IGNORECASE)
+MADE_HAND_RE = re.compile(
+    r"\b(PAIR|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
+    re.IGNORECASE,
+)
+SECTION_KEYWORD_RE = re.compile(r"\b(CARDS DEALT|PRE-FLOP|FLOP|TURN|RIVER|SHOWDOWN)\b", re.IGNORECASE)
 
 ACTION_PATTERNS = [
     ("post_small_blind", re.compile(r"\bPost small blind\b.*?([0-9]+(?:\.[0-9]+)?)\s*BB", re.IGNORECASE)),
@@ -51,6 +59,8 @@ def clean_text(text: str) -> str:
     text = text or ""
     text = text.replace("\r", "\n")
     text = re.sub(r"&nbsp;", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<div.*?</div>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<img.*?>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -73,7 +83,7 @@ def normalize_card(token: str) -> str:
     token = token.strip()
     match = re.match(r"(10|[2-9AKQJT])\s*([♥♦♣♠♡♢hdcs])", token, flags=re.IGNORECASE)
     if not match:
-        return token.upper()
+        return normalize_rank(token)
     return f"{normalize_rank(match.group(1))}{normalize_suit(match.group(2))}"
 
 
@@ -85,14 +95,23 @@ def extract_rank_only_cards(text: str):
     return [normalize_rank(token) for token in RANK_ONLY_RE.findall(text)]
 
 
+def extract_any_cards(text: str):
+    suited = extract_cards_with_suits(text)
+    if suited:
+        return suited
+    return extract_rank_only_cards(text)
+
+
 def extract_cards_dealt_blocks(raw_text: str):
     text = raw_text or ""
     text = text.replace("\r", "\n")
-    pattern = re.compile(r"CARDS DEALT(.*?)(?:\n\s*PRE-FLOP\b|\n\s*FLOP\b|\n\s*TURN\b|\n\s*RIVER\b|\n\s*SHOWDOWN\b|\n\s*Hand\b|\Z)", re.IGNORECASE | re.DOTALL)
+    pattern = re.compile(
+        r"CARDS DEALT(.*?)(?:\n\s*PRE-FLOP\b|\n\s*FLOP\b|\n\s*TURN\b|\n\s*RIVER\b|\n\s*SHOWDOWN\b|\n\s*Hand\b|\Z)",
+        re.IGNORECASE | re.DOTALL,
+    )
     blocks = []
     for match in pattern.finditer(text):
         block = match.group(1)
-        block = re.sub(r"<img.*?>", " ", block, flags=re.IGNORECASE)
         block = re.sub(r"<[^>]+>", " ", block)
         block = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", block)
         block = re.sub(r"[ \t]+", " ", block)
@@ -140,12 +159,22 @@ def parse_blinds(text: str):
 
 def parse_hero_cards(lines, raw_text=None):
     for i, line in enumerate(lines):
-        if line.upper() == "CARDS DEALT":
+        upper = line.upper()
+        if upper.startswith("CARDS DEALT"):
+            suffix = re.sub(r"^CARDS DEALT\s*", "", line, flags=re.IGNORECASE)
+            ranks = extract_rank_only_cards(suffix)
+            if len(ranks) >= 2:
+                return ranks[:2]
+
             ranks = []
             for probe in lines[i + 1:i + 8]:
+                probe_upper = probe.upper()
+                if probe_upper in STREETS or probe_upper.startswith("SHOWDOWN"):
+                    break
                 ranks.extend(extract_rank_only_cards(probe))
                 if len(ranks) >= 2:
                     return ranks[:2]
+
         match = re.search(r"\bRECEIVES\s*:\s*(.+)$", line, flags=re.IGNORECASE)
         if match:
             ranks = extract_rank_only_cards(match.group(1))
@@ -157,7 +186,6 @@ def parse_hero_cards(lines, raw_text=None):
             ranks = extract_rank_only_cards(block)
             if len(ranks) >= 2:
                 return ranks[:2]
-
     return []
 
 
@@ -166,19 +194,27 @@ def parse_board(lines):
     for i, line in enumerate(lines):
         upper = line.upper()
         if upper == "FLOP" and i + 1 < len(lines):
-            board["flop"] = extract_cards_with_suits(lines[i + 1])[:3]
+            cards = extract_any_cards(lines[i + 1])
+            board["flop"] = cards[:3]
         elif upper == "TURN" and i + 1 < len(lines):
-            cards = extract_cards_with_suits(lines[i + 1])
+            cards = extract_any_cards(lines[i + 1])
             if len(cards) >= 4:
                 board["turn"] = cards[3]
+            elif len(cards) == 1:
+                board["turn"] = cards[0]
         elif upper == "RIVER" and i + 1 < len(lines):
-            cards = extract_cards_with_suits(lines[i + 1])
+            cards = extract_any_cards(lines[i + 1])
             if len(cards) >= 5:
                 board["river"] = cards[4]
+            elif len(cards) == 1:
+                board["river"] = cards[0]
+            elif len(cards) >= 4:
+                board["river"] = cards[-1]
+
     board["all_cards"] = board["flop"][:]
-    if board["turn"]:
+    if board["turn"] and len(board["all_cards"]) < 4:
         board["all_cards"].append(board["turn"])
-    if board["river"]:
+    if board["river"] and len(board["all_cards"]) < 5:
         board["all_cards"].append(board["river"])
     return board
 
@@ -199,13 +235,21 @@ def is_probable_player_name(line: str) -> bool:
         return False
     if contains_action_words(line):
         return False
+    if SECTION_KEYWORD_RE.search(line):
+        return False
+    if MADE_HAND_RE.search(line):
+        return False
     if re.search(r"\b(BB|SB)\b", upper):
         return False
-    if re.fullmatch(r"[AKQJT2-9\s♥♦♣♠♡♢hdcs()\.]+", line, flags=re.IGNORECASE):
+    if CARDISH_LINE_RE.fullmatch(line):
         return False
-    if len(line) > 40:
+    if COMPACT_HOLE_CARDS_RE.fullmatch(line):
         return False
-    return bool(re.search(r"[A-Za-z]", line))
+    if ":" in line:
+        return False
+    if len(line) > 32:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_ ]*[A-Za-z0-9_]", line))
 
 
 def collect_player_names(lines):
@@ -238,7 +282,7 @@ def extract_inline_actor(line: str):
         idx = line.lower().find(token.lower())
         if idx > 0:
             prefix = line[:idx].strip()
-            if prefix and " " not in prefix:
+            if prefix and "\n" not in prefix:
                 return prefix, line[idx:].strip()
     return None
 
@@ -251,7 +295,7 @@ def enrich_players_from_actions(lines, players):
         if not inline:
             continue
         actor, _ = inline
-        if actor.lower() not in seen:
+        if is_probable_player_name(actor) and actor.lower() not in seen:
             seen.add(actor.lower())
             enriched.append(actor)
     return enriched
@@ -263,7 +307,7 @@ def infer_hero_name(players, lines):
         if player in players:
             return player
     for line in lines:
-        match = re.match(r"([A-Za-z0-9_]+)\s+RECEIVES\s*:", line, flags=re.IGNORECASE)
+        match = INLINE_RECEIVES_RE.match(line)
         if match:
             return canonicalize_name(match.group(1), players)
     return None
@@ -323,7 +367,38 @@ def assign_blind_owners(actions, players, hero_name):
     return actions
 
 
-def parse_actions(lines, players, hero_name=None, hero_cards=None):
+def extract_structural_actions(lines, board, showdown_present):
+    actions = []
+    seen = set()
+    for line in lines:
+        upper = line.upper()
+        if upper not in STRUCTURAL_MARKERS:
+            continue
+        street, action_name = STRUCTURAL_MARKERS[upper]
+        action = {
+            "street": street,
+            "player": None,
+            "action": action_name,
+            "amount_bb": None,
+            "raw": upper,
+        }
+        if action_name == "flop_start":
+            action["cards"] = board.get("flop", [])
+        elif action_name == "turn_start":
+            action["cards"] = [board["turn"]] if board.get("turn") else []
+        elif action_name == "river_start":
+            action["cards"] = [board["river"]] if board.get("river") else []
+        elif action_name == "showdown_start":
+            action["showdown_present"] = showdown_present
+        key = (action["street"], action["action"], tuple(action.get("cards", [])), action.get("showdown_present"))
+        if key in seen:
+            continue
+        seen.add(key)
+        actions.append(action)
+    return actions
+
+
+def parse_actions(lines, players, hero_name=None, hero_cards=None, board=None, showdown_present=False):
     actions = []
     current_street = "preflop"
     pending_player = None
@@ -339,14 +414,25 @@ def parse_actions(lines, players, hero_name=None, hero_cards=None):
             i += 1
             continue
 
+        if upper.startswith("SHOWDOWN "):
+            current_street = "showdown"
+            pending_player = None
+            inline = INLINE_SHOWDOWN_RE.match(line)
+            if inline:
+                candidate = canonicalize_name(inline.group(1).strip(), players)
+                if candidate in players:
+                    pending_player = candidate
+            i += 1
+            continue
+
         inline = split_inline_name_action(line, players)
         if inline:
             player, segment = inline
             action = parse_action_segment(segment, player, current_street)
             if action:
                 actions.append(action)
-                i += 1
-                continue
+            i += 1
+            continue
 
         if is_probable_player_name(line):
             pending_player = canonicalize_name(line, players)
@@ -362,9 +448,9 @@ def parse_actions(lines, players, hero_name=None, hero_cards=None):
             action = parse_action_segment(combined, actor, current_street)
             if action:
                 actions.append(action)
-                pending_player = None
-                i += 1
-                continue
+            pending_player = None
+            i += 1
+            continue
 
         i += 1
 
@@ -378,6 +464,8 @@ def parse_actions(lines, players, hero_name=None, hero_cards=None):
             "cards": hero_cards,
         })
 
+    board = board or {"flop": [], "turn": None, "river": None}
+    actions = extract_structural_actions(lines, board, showdown_present) + actions
     actions = assign_blind_owners(actions, players, hero_name)
 
     deduped = []
@@ -390,6 +478,7 @@ def parse_actions(lines, players, hero_name=None, hero_cards=None):
             action.get("amount_bb"),
             tuple(action.get("cards", [])),
             action.get("raw"),
+            action.get("showdown_present"),
         )
         if key in seen:
             continue
@@ -399,43 +488,81 @@ def parse_actions(lines, players, hero_name=None, hero_cards=None):
 
 
 def parse_showdown(lines, players):
-    try:
-        idx = lines.index("SHOWDOWN")
-    except ValueError:
-        return None
     showdown = {"players": [], "winners": []}
     seen_players = set()
     seen_winners = set()
     current_player = None
-    for line in lines[idx + 1:]:
+
+    start_idx = None
+    for idx, line in enumerate(lines):
+        if line.upper() == "SHOWDOWN" or line.upper().startswith("SHOWDOWN "):
+            start_idx = idx
+            break
+    if start_idx is None:
+        return None
+
+    first_line = lines[start_idx]
+    inline_showdown = INLINE_SHOWDOWN_RE.match(first_line)
+    if inline_showdown:
+        candidate = canonicalize_name(inline_showdown.group(1).strip(), players)
+        if candidate in players and candidate not in seen_players:
+            showdown["players"].append({"name": candidate})
+            seen_players.add(candidate)
+            current_player = candidate
+
+    for line in lines[start_idx + 1:]:
         upper = line.upper()
         if upper in STREETS and upper != "SHOWDOWN":
             break
-        inline = split_inline_name_action(line, players)
-        if inline:
-            player, segment = inline
-            if player and player not in seen_players:
-                showdown["players"].append({"name": player})
-                seen_players.add(player)
-            action = parse_action_segment(segment, player, "showdown")
-            if action and action["action"] == "wins":
-                key = (player, action.get("amount_bb"))
-                if key not in seen_winners:
-                    seen_winners.add(key)
-                    showdown["winners"].append({"player": player, "amount_bb": action.get("amount_bb")})
-            current_player = player
-            continue
+
         if is_probable_player_name(line):
-            current_player = canonicalize_name(line, players)
-            if current_player and current_player not in seen_players:
-                showdown["players"].append({"name": current_player})
-                seen_players.add(current_player)
+            candidate = canonicalize_name(line, players)
+            if candidate in players:
+                current_player = candidate
+                if current_player not in seen_players:
+                    showdown["players"].append({"name": current_player})
+                    seen_players.add(current_player)
             continue
-        if current_player and ":" in line and "receives" not in line.lower():
-            for player_entry in showdown["players"]:
-                if player_entry["name"] == current_player:
-                    player_entry["made_hand"] = line
-                    break
+
+        receives_match = INLINE_RECEIVES_RE.match(line)
+        if receives_match:
+            candidate = canonicalize_name(receives_match.group(1), players)
+            cards = extract_rank_only_cards(receives_match.group(2))[:2]
+            if candidate in players:
+                current_player = candidate
+                if current_player not in seen_players:
+                    showdown["players"].append({"name": current_player})
+                    seen_players.add(current_player)
+                for entry in showdown["players"]:
+                    if entry["name"] == current_player and cards:
+                        entry["hole_cards"] = cards
+                        break
+            continue
+
+        if current_player:
+            if COMPACT_HOLE_CARDS_RE.fullmatch(line):
+                cards = extract_rank_only_cards(line)
+                for entry in showdown["players"]:
+                    if entry["name"] == current_player:
+                        entry["hole_cards"] = cards[:2]
+                        break
+                continue
+
+            if MADE_HAND_RE.search(line) or (":" in line and "receives" not in line.lower()):
+                for entry in showdown["players"]:
+                    if entry["name"] == current_player:
+                        entry["made_hand"] = line
+                        break
+                continue
+
+        match_win = re.search(r"\bWINS?\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", line, flags=re.IGNORECASE)
+        if match_win and current_player:
+            amount = float(match_win.group(1))
+            key = (current_player, amount)
+            if key not in seen_winners:
+                seen_winners.add(key)
+                showdown["winners"].append({"player": current_player, "amount_bb": amount})
+
     if not showdown["players"] and not showdown["winners"]:
         return None
     return showdown
@@ -443,6 +570,8 @@ def parse_showdown(lines, players):
 
 def infer_current_street(board, showdown, actions):
     if showdown and (showdown.get("players") or showdown.get("winners")):
+        return "showdown"
+    if any(action.get("street") == "showdown" for action in actions):
         return "showdown"
     if any(action.get("street") == "river" for action in actions):
         return "river"
@@ -473,17 +602,29 @@ def build_events(state):
         push("hand_start", street="preflop")
 
     for action in state.get("actions", []):
-        if action["action"] in {"post_small_blind", "post_big_blind", "hero_cards"}:
+        action_name = action["action"]
+        if action_name in {
+            "post_small_blind",
+            "post_big_blind",
+            "hero_cards",
+            "cards_dealt",
+            "flop_start",
+            "turn_start",
+            "river_start",
+            "showdown_start",
+        }:
             payload = {"player": action.get("player"), "amount_bb": action.get("amount_bb")}
             if "cards" in action:
                 payload["cards"] = action["cards"]
-            push(action["action"], street=action.get("street"), **payload)
+            if "showdown_present" in action:
+                payload["showdown_present"] = action["showdown_present"]
+            push(action_name, street=action.get("street"), **payload)
             continue
 
         payload = {
             "player": action.get("player"),
             "amount_bb": action.get("amount_bb"),
-            "action_name": action.get("action"),
+            "action_name": action_name,
             "raw": action.get("raw"),
         }
         if "cards" in action:
@@ -514,9 +655,17 @@ def parse_poker_ocr_text(raw_text: str, image_path: Path):
     if hero_name and hero_name not in players:
         players = [hero_name] + players
     hero_cards = parse_hero_cards(lines, raw_text=raw_text)
-    actions = parse_actions(lines, players, hero_name=hero_name, hero_cards=hero_cards)
     board = parse_board(lines)
     showdown = parse_showdown(lines, players)
+    actions = parse_actions(
+        lines,
+        players,
+        hero_name=hero_name,
+        hero_cards=hero_cards,
+        board=board,
+        showdown_present=showdown is not None,
+    )
+
     state = {
         "timestamp_utc": datetime.utcnow().isoformat() + "Z",
         "source_image": image_path.name,
