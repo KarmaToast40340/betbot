@@ -508,86 +508,98 @@ def reconcile_showdown_winner(actions: list[dict[str, Any]], showdown: dict[str,
     return actions
 
 
+def iter_action_matches(line):
+    # Ajout de "post small/big blind" au pattern
+    # On capture l'action, et on cherche le montant si présent
+    pattern = r"(?P<action>calls|raises|bets|folds|checks|post\s+small\s+blind|post\s+big\s+blind)(?:\s+(?:to|an)?\s*(?P<amount>[\d\.]+))?"
+    matches = list(re.finditer(pattern, line, re.IGNORECASE))
+    
+    results = []
+    for m in matches:
+        act = m.group("action").lower().replace(" ", "_")
+        data = {"action": act}
+        if m.group("amount"):
+            data["amount_bb"] = float(m.group("amount"))
+        results.append(data)
+    return results
+
+from collections import deque
+import re
+
 def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, board=None, showdown_present=False, showdown=None):
     actions = []
-    current_street = "preflop"
-    player_fifo = deque(infer_initial_order(current_street, players, hero_name))
-    action_fifo = deque()
+    player_queue = deque()
+    action_queue = deque()
     
-    i = 0
-    def canonical(name):
-        return canonicalize_name(name, players, alias_map)
-
-    while i < len(lines):
-        line = lines[i]
-        cleaned = strip_heading_prefix(line)
-        upper = cleaned.upper()
-
-        # 1. Gestion des changements de rue
-        if upper in STREET_NAMES or upper.startswith("SHOWDOWN"):
-            current_street = normalize_street_name(upper if upper in STREET_NAMES else "SHOWDOWN")
-            player_fifo = deque(infer_initial_order(current_street, players, hero_name))
-            action_fifo.clear()
-            i += 1
+    current_street = "blinds"
+    
+    for line in lines:
+        line_clean = line.strip()
+        upper = line_clean.upper()
+        if not line_clean: 
             continue
 
-        # 2. EXTRACTION TOTALE (Le cœur du problème)
-        # On vérifie d'abord s'il y a un acteur explicite dans la ligne (ex: "Karmatoast Raises to 3")
-        inline_info = extract_inline_actor(cleaned)
-        
-        # On cherche toutes les actions dans la ligne
-        detected_actions = iter_action_matches(cleaned)
-        
-        # Si la ligne contient un nom explicite (inline), on l'ajoute à la file
-        if inline_info:
-            actor_name, _ = inline_info
-            player_fifo.append(canonical(actor_name))
-        # Sinon, si la ligne est JUSTE un nom, on l'ajoute
-        elif is_probable_player_name(cleaned):
-            player_fifo.append(canonical(cleaned))
+        # 1. Gestion des changements de street
+        if upper in STREET_NAMES or upper.startswith("SHOWDOWN"):
+            current_street = normalize_street_name(upper if upper in STREET_NAMES else "SHOWDOWN")
+            # On vide les files au changement de street pour éviter les couplages aberrants
+            player_queue.clear()
+            action_queue.clear()
+            continue
             
-        # On ajoute toutes les actions trouvées dans la file action
-        for _, _, base_action in detected_actions:
-            action_fifo.append(base_action)
+        # 2. Détection
+        detected_actions = iter_action_matches(line_clean)
+        is_player = is_probable_player_name(line_clean)
         
-        # 3. CONSOMMATION SYNCHRONISÉE
-        # On ne consomme que si on a au moins une action à attribuer
-        while action_fifo:
-            # Si on a pas de joueur, on ne peut pas consommer (on attend le prochain joueur)
-            if not player_fifo:
-                break
-                
-            actor = player_fifo.popleft()
-            base_action = action_fifo.popleft()
+        # Logique : Si on trouve un joueur, on l'ajoute.
+        # Si on trouve une action, on l'ajoute.
+        # Le couplage FIFO se chargera de les associer intelligemment.
+        if is_player:
+            player_queue.append(canonicalize_name(line_clean, players, alias_map))
             
-            action = dict(base_action)
-            action["street"] = current_street
-            action["player"] = actor
-            actions.append(action)
-            
-            # On réinsère le joueur à la fin pour le prochain tour
-            player_fifo.append(actor)
+        if detected_actions:
+            for act in detected_actions:
+                action_queue.append(act)
         
-        i += 1
+        # 3. Moteur de couplage (FIFO)
+        # On tente de coupler tant qu'on a les deux éléments
+        while action_queue and player_queue:
+            action_data = action_queue.popleft()
+            player = player_queue.popleft()
+            
+            action_entry = {
+                "seq": len(actions),
+                "street": current_street,
+                "player": player,
+                "action": action_data["action"]
+            }
+            if "amount_bb" in action_data and action_data["amount_bb"] is not None:
+                action_entry["amount_bb"] = action_data["amount_bb"]
+            
+            actions.append(action_entry)
 
-    # Injections finales et nettoyage
+    # --- Post-traitement ---
     if hero_name and hero_cards:
-        actions.insert(0, {"street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
+        actions.insert(0, {"seq": 0, "street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
     
-    actions = extract_structural_actions(lines, board or {}, showdown_present) + actions
-    actions = assign_blind_owners(actions, players, hero_name)
-    actions = reconcile_showdown_winner(actions, showdown)
-
-    # Déduplication finale pour éviter les entrées fantômes
+    structural = extract_structural_actions(lines, board or {}, showdown_present)
+    
     deduped = []
     seen = set()
-    for a in actions:
-        key = (a.get("street"), a.get("player"), a.get("action"), a.get("raw"))
-        if key not in seen:
+    for a in structural + actions:
+        # On définit une clé unique pour éviter les doublons structurels
+        key = (a.get("street"), a.get("player"), a.get("action"), a.get("amount_bb"))
+        if a.get("player") is None:
+            if key not in seen:
+                deduped.append(a)
+                seen.add(key)
+        else:
             deduped.append(a)
-            seen.add(key)
             
-    return deduped
+    final_actions = assign_blind_owners(deduped, players, hero_name)
+    final_actions = reconcile_showdown_winner(final_actions, showdown)
+    
+    return final_actions
 
 def parse_showdown(lines, players, alias_map, hero_cards, board):
     idx = None

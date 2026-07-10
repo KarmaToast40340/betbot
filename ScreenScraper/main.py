@@ -67,18 +67,23 @@ def state_signature(state):
 def merge_unique_actions(old_actions, new_actions):
     merged = []
     seen = set()
+    
+    # On itère sur la liste combinée
     for action in (old_actions or []) + (new_actions or []):
+        # Clé composée ultra-spécifique pour éviter les collisions
         key = (
             action.get("street"),
             action.get("player"),
             action.get("action"),
             action.get("amount_bb"),
-            tuple(action.get("cards", []) or []),
-            action.get("raw"),
-            action.get("showdown_present"),
+            # On transforme les listes en tuples pour qu'ils soient hashables
+            tuple(sorted(action.get("cards", []) or [])),
+            action.get("showdown_present")
         )
+        
         if key in seen:
             continue
+            
         seen.add(key)
         merged.append(action)
     return merged
