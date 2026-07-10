@@ -1,12 +1,14 @@
 import re
+from collections import deque
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from config import STREETS, SUIT_MAP
+from config import STREETS, STRUCTURAL_MARKERS
 
-SUIT_CHARS = "♥♦♣♠♡♢hdcs"
-STREET_NAMES = {"PRE-FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"}
+HERO_NAME = "Karmatoast40"
+STREET_NAMES = set(STREETS)
 NON_ACTION_EVENTS = {
     "cards_dealt",
     "flop_start",
@@ -18,47 +20,43 @@ NON_ACTION_EVENTS = {
 
 HAND_LINE_RE = re.compile(r"^\s*Hand\s+(.+)$", re.IGNORECASE)
 AMOUNT_BB_RE = re.compile(r"\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?", re.IGNORECASE)
-CARD_WITH_SUIT_RE = re.compile(rf"(?:10|[2-9AKQJT])(?:\s*[{SUIT_CHARS}])", re.IGNORECASE)
-RANK_ONLY_RE = re.compile(r"\b(10|[2-9AKQJT])\b", re.IGNORECASE)
-COMPACT_RANK_SEQ_RE = re.compile(r"(?<![A-Za-z0-9_])(10|[2-9AKQJT])(?=(10|[2-9AKQJT]))", re.IGNORECASE)
-CARDS_DEALT_INLINE_RE = re.compile(r"^CARDS DEALT\s+(.+)$", re.IGNORECASE)
+CARD_RANK_RE = re.compile(r"\b(10|[2-9AKQJT])\b", re.IGNORECASE)
+COMPACT_CARD_SEQ_RE = re.compile(r"(?<![A-Za-z0-9])((?:10|[2-9AKQJT]){2,5})(?![A-Za-z0-9])", re.IGNORECASE)
+CARDS_DEALT_INLINE_RE = re.compile(r"^CARDS\s+DEALT\s*(.*)$", re.IGNORECASE)
 SHOWDOWN_INLINE_RE = re.compile(r"^SHOWDOWN\s+(.+)$", re.IGNORECASE)
-BOARD_VALUE_RE = re.compile(r"^(?:\s*(?:10|[2-9AKQJT])\s*){3,5}$", re.IGNORECASE)
+BOARD_LINE_RE = re.compile(r"^\s*(?:10|[2-9AKQJT])(?:\s+(?:10|[2-9AKQJT])){0,4}\s*$", re.IGNORECASE)
+MADE_HAND_RE = re.compile(
+    r"\b(PAIR|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
+    re.IGNORECASE,
+)
 
 ACTION_PATTERNS = [
-    ("post_small_blind", re.compile(r"\bPost small blind\b(?:\s*\(?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:BB)?\s*\)?)?", re.IGNORECASE)),
-    ("post_big_blind", re.compile(r"\bPost big blind\b(?:\s*\(?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:BB)?\s*\)?)?", re.IGNORECASE)),
-    ("raise_to", re.compile(r"\bRaises to\s+([0-9]+(?:\.[0-9]+)?)(?:\s*BB\b)?", re.IGNORECASE)),
-    ("bet", re.compile(r"\bBets\s+([0-9]+(?:\.[0-9]+)?)(?:\s*BB\b)?", re.IGNORECASE)),
-    ("call", re.compile(r"\bCalls\s+([0-9]+(?:\.[0-9]+)?)(?:\s*BB\b)?", re.IGNORECASE)),
-    ("check", re.compile(r"\bCheck\b", re.IGNORECASE)),
-    ("fold", re.compile(r"\bFold\b", re.IGNORECASE)),
-    ("mucks", re.compile(r"\bMucks\b", re.IGNORECASE)),
-    ("wins", re.compile(r"\bWINS?\s+([0-9]+(?:\.[0-9]+)?)(?:\s*BB\b)?", re.IGNORECASE)),
+    ("post_small_blind", re.compile(r"\bPost\s+small\s+blind(?:\s*\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?)?", re.IGNORECASE)),
+    ("post_big_blind", re.compile(r"\bPost\s+big\s+blind(?:\s*\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?)?", re.IGNORECASE)),
+    ("raise_to", re.compile(r"\bRaises\s+to\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", re.IGNORECASE)),
+    ("bet", re.compile(r"\bBets\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", re.IGNORECASE)),
+    ("call", re.compile(r"\bCalls\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", re.IGNORECASE)),
+    ("check", re.compile(r"\bChecks?\b", re.IGNORECASE)),
+    ("fold", re.compile(r"\bFolds?\b", re.IGNORECASE)),
+    ("mucks", re.compile(r"\bMucks?\b", re.IGNORECASE)),
+    ("wins", re.compile(r"\bWINS\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", re.IGNORECASE)),
     ("receives", re.compile(r"\bRECEIVES\s*:\s*(.+)$", re.IGNORECASE)),
 ]
-
-ACTION_START_TOKENS = (
+ACTION_START_TOKENS = [
     "Post small blind",
     "Post big blind",
     "Raises to",
     "Bets",
     "Calls",
+    "Checks",
     "Check",
+    "Folds",
     "Fold",
     "Mucks",
+    "Muck",
     "WINS",
     "RECEIVES",
-)
-
-STRUCTURAL_MARKERS = {
-    "CARDS DEALT": ("preflop", "cards_dealt"),
-    "FLOP": ("flop", "flop_start"),
-    "TURN": ("turn", "turn_start"),
-    "RIVER": ("river", "river_start"),
-    "SHOWDOWN": ("showdown", "showdown_start"),
-}
-
+]
 BANNED_NAME_TOKENS = {
     "CARDS DEALT",
     "PRE-FLOP",
@@ -73,8 +71,10 @@ BANNED_NAME_TOKENS = {
 def clean_text(text: str) -> str:
     text = text or ""
     text = text.replace("\r", "\n")
+    text = text.replace("♣", " ").replace("♠", " ").replace("♦", " ").replace("♥", " ")
+    text = text.replace("♡", " ").replace("♢", " ")
     text = re.sub(r"&nbsp;", " ", text, flags=re.IGNORECASE)
-    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ 	]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -92,54 +92,34 @@ def normalize_rank(rank: str) -> str:
     return "T" if rank == "10" else rank
 
 
-def normalize_suit(suit: str) -> str:
-    return SUIT_MAP.get(suit.lower(), suit.lower())
-
-
-def normalize_card(token: str) -> str:
-    token = token.strip()
-    match = re.match(rf"(10|[2-9AKQJT])\s*([{SUIT_CHARS}])", token, flags=re.IGNORECASE)
-    if not match:
-        return normalize_rank(token)
-    return f"{normalize_rank(match.group(1))}{normalize_suit(match.group(2))}"
+def normalize_player_token(name: str) -> str:
+    name = (name or "").strip()
+    name = re.sub(r"[^A-Za-z0-9_]", "", name)
+    return name.lower()
 
 
 def space_compact_cards(text: str) -> str:
-    if not text:
-        return text
-    text = COMPACT_RANK_SEQ_RE.sub(r"\1 ", text)
-    text = re.sub(r"\s{2,}", " ", text)
-    return text.strip()
-
-
-def extract_cards_with_suits(text: str) -> list[str]:
-    suited = [normalize_card(token) for token in CARD_WITH_SUIT_RE.findall(text)]
-    if suited:
-        return suited
-    return extract_rank_only_cards(text)
+    def repl(match: re.Match[str]) -> str:
+        chunk = match.group(1)
+        tokens = re.findall(r"10|[2-9AKQJT]", chunk, flags=re.IGNORECASE)
+        return " ".join(tokens)
+    return COMPACT_CARD_SEQ_RE.sub(repl, text or "")
 
 
 def extract_rank_only_cards(text: str) -> list[str]:
-    text = space_compact_cards(text)
-    return [normalize_rank(token) for token in RANK_ONLY_RE.findall(text)]
+    text = space_compact_cards(text or "")
+    return [normalize_rank(token) for token in CARD_RANK_RE.findall(text)]
 
 
-def extract_cards_dealt_blocks(raw_text: str) -> list[str]:
-    text = (raw_text or "").replace("\r", "\n")
-    pattern = re.compile(
-        r"CARDS DEALT(.*?)(?:\n\s*#*\s*PRE-FLOP\b|\n\s*#*\s*FLOP\b|\n\s*#*\s*TURN\b|\n\s*#*\s*RIVER\b|\n\s*#*\s*SHOWDOWN\b|\n\s*Hand\b|\Z)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    blocks = []
-    for match in pattern.finditer(text):
-        block = match.group(1)
-        block = re.sub(r"<img.*?>", " ", block, flags=re.IGNORECASE)
-        block = re.sub(r"<[^>]+>", " ", block)
-        block = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", block)
-        block = re.sub(r"[ \t]+", " ", block)
-        block = re.sub(r"\n{2,}", "\n", block)
-        blocks.append(block.strip())
-    return blocks
+def extract_strict_cards(text: str, expected: int | None = None) -> list[str]:
+    if not text:
+        return []
+    cards = extract_rank_only_cards(text)
+    if expected is None:
+        return cards
+    if len(cards) < expected:
+        return []
+    return cards[:expected]
 
 
 def split_hand_blocks(raw_text: str) -> list[str]:
@@ -177,37 +157,22 @@ def parse_blinds(text: str) -> dict[str, float | None]:
 
 
 def parse_hero_cards(lines: list[str], raw_text: str | None = None) -> list[str]:
-    if raw_text:
-        for block in extract_cards_dealt_blocks(raw_text):
-            ranks = extract_rank_only_cards(block)
-            if len(ranks) >= 2:
-                return ranks[:2]
-
     for i, line in enumerate(lines):
         cleaned = strip_heading_prefix(line)
-        match_inline = CARDS_DEALT_INLINE_RE.match(cleaned)
-        if match_inline:
-            inline_ranks = extract_rank_only_cards(match_inline.group(1).strip())
-            if len(inline_ranks) >= 2:
-                return inline_ranks[:2]
-
+        inline = CARDS_DEALT_INLINE_RE.match(cleaned)
+        if inline:
+            cards = extract_strict_cards(inline.group(1), expected=2)
+            if cards:
+                return cards
         if cleaned.upper() == "CARDS DEALT":
-            ranks: list[str] = []
-            for probe in lines[i + 1 : i + 8]:
-                probe_upper = strip_heading_prefix(probe).upper()
+            for probe in lines[i + 1 : i + 6]:
+                probe_clean = strip_heading_prefix(probe)
+                probe_upper = probe_clean.upper()
                 if probe_upper in STREET_NAMES:
                     break
-                if probe_upper.startswith("CARDS DEALT"):
-                    continue
-                ranks.extend(extract_rank_only_cards(probe))
-                if len(ranks) >= 2:
-                    return ranks[:2]
-
-        match_receives = re.search(r"\bRECEIVES\s*:\s*(.+)$", line, flags=re.IGNORECASE)
-        if match_receives:
-            ranks = extract_rank_only_cards(match_receives.group(1))
-            if len(ranks) >= 2:
-                return ranks[:2]
+                cards = extract_strict_cards(probe_clean, expected=2)
+                if cards:
+                    return cards
     return []
 
 
@@ -218,30 +183,25 @@ def parse_board(lines: list[str]) -> dict[str, Any]:
         upper = cleaned.upper()
         if upper.startswith("FLOP"):
             payload = cleaned[4:].strip()
-            cards = extract_cards_with_suits(payload) if payload else []
-            if len(cards) < 3 and i + 1 < len(lines):
-                cards = extract_cards_with_suits(lines[i + 1])
-            if len(cards) >= 3:
+            cards = extract_strict_cards(payload, expected=3)
+            if not cards and i + 1 < len(lines):
+                cards = extract_strict_cards(strip_heading_prefix(lines[i + 1]), expected=3)
+            if cards:
                 board["flop"] = cards[:3]
         elif upper.startswith("TURN"):
             payload = cleaned[4:].strip()
-            cards = extract_cards_with_suits(payload) if payload else []
+            cards = extract_strict_cards(payload, expected=4)
             if not cards and i + 1 < len(lines):
-                cards = extract_cards_with_suits(lines[i + 1])
-            if len(cards) >= 4:
+                cards = extract_strict_cards(strip_heading_prefix(lines[i + 1]), expected=4)
+            if cards:
                 board["turn"] = cards[3]
-            elif cards:
-                board["turn"] = cards[-1]
         elif upper.startswith("RIVER"):
             payload = cleaned[5:].strip()
-            cards = extract_cards_with_suits(payload) if payload else []
+            cards = extract_strict_cards(payload, expected=5)
             if not cards and i + 1 < len(lines):
-                cards = extract_cards_with_suits(lines[i + 1])
-            if len(cards) >= 5:
+                cards = extract_strict_cards(strip_heading_prefix(lines[i + 1]), expected=5)
+            if cards:
                 board["river"] = cards[4]
-            elif cards:
-                board["river"] = cards[-1]
-
     board["all_cards"] = board["flop"][:]
     if board["turn"]:
         board["all_cards"].append(board["turn"])
@@ -255,14 +215,16 @@ def contains_action_words(line: str) -> bool:
     return any(token.lower() in lowered for token in ACTION_START_TOKENS)
 
 
+def is_board_line(line: str) -> bool:
+    return bool(BOARD_LINE_RE.fullmatch(space_compact_cards(strip_heading_prefix(line))))
+
+
 def is_probable_player_name(line: str) -> bool:
     if not line:
         return False
     line = strip_heading_prefix(line)
     upper = line.upper()
-    if not line:
-        return False
-    if upper in BANNED_NAME_TOKENS or upper in STREETS:
+    if not line or upper in BANNED_NAME_TOKENS or upper in STREET_NAMES:
         return False
     if upper.startswith("CARDS DEALT") or upper.startswith("SHOWDOWN"):
         return False
@@ -270,47 +232,116 @@ def is_probable_player_name(line: str) -> bool:
         return False
     if contains_action_words(line):
         return False
+    if MADE_HAND_RE.search(line):
+        return False
+    if is_board_line(line):
+        return False
     if re.search(r"\b(BB|SB)\b", upper):
-        return False
-    if re.fullmatch(rf"[AKQJT2-9\s{SUIT_CHARS}()\.#:-]+", line, flags=re.IGNORECASE):
-        return False
-    if BOARD_VALUE_RE.fullmatch(line):
-        return False
-    compact = space_compact_cards(line)
-    ranks = extract_rank_only_cards(line)
-    if len(ranks) >= 2 and compact.replace(" ", "") == line.replace(" ", ""):
         return False
     if ":" in line:
         return False
-    if len(line) > 40:
+    if len(line) > 32:
         return False
     return bool(re.search(r"[A-Za-z]", line))
 
 
-def collect_player_names(lines: list[str]) -> list[str]:
-    names: list[str] = []
-    seen: set[str] = set()
+def names_look_like_same_player(left: str, right: str) -> bool:
+    a = normalize_player_token(left)
+    b = normalize_player_token(right)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a == normalize_player_token(HERO_NAME) or b == normalize_player_token(HERO_NAME):
+        return a == b
+    digits_a = "".join(ch for ch in a if ch.isdigit())
+    digits_b = "".join(ch for ch in b if ch.isdigit())
+    if digits_a and digits_b and digits_a != digits_b:
+        return False
+    ratio = SequenceMatcher(None, a, b).ratio()
+    return ratio >= 0.86
+
+
+def choose_canonical_name(existing: str, candidate: str) -> str:
+    if normalize_player_token(candidate) == normalize_player_token(HERO_NAME):
+        return HERO_NAME
+    score_existing = (sum(ch.isdigit() for ch in existing), len(existing))
+    score_candidate = (sum(ch.isdigit() for ch in candidate), len(candidate))
+    return candidate if score_candidate > score_existing else existing
+
+
+def merge_player_name(candidate: str, canonicals: list[str]) -> str:
+    if normalize_player_token(candidate) == normalize_player_token(HERO_NAME):
+        return HERO_NAME
+    for idx, existing in enumerate(canonicals):
+        if names_look_like_same_player(existing, candidate):
+            better = choose_canonical_name(existing, candidate)
+            canonicals[idx] = better
+            return better
+    canonicals.append(candidate)
+    return candidate
+
+
+def collect_raw_player_names(lines: list[str]) -> list[str]:
+    raw_names = []
+    seen = set()
     for line in lines:
         cleaned = strip_heading_prefix(line)
-        if cleaned.upper() in STRUCTURAL_MARKERS or cleaned.upper() in STREET_NAMES:
-            continue
         if is_probable_player_name(cleaned):
             key = cleaned.lower()
             if key not in seen:
                 seen.add(key)
-                names.append(cleaned)
-    return names
+                raw_names.append(cleaned)
+        inline = extract_inline_actor(cleaned)
+        if inline:
+            actor, _ = inline
+            if is_probable_player_name(actor):
+                key = actor.lower()
+                if key not in seen:
+                    seen.add(key)
+                    raw_names.append(actor)
+        showdown_inline = SHOWDOWN_INLINE_RE.match(cleaned)
+        if showdown_inline:
+            actor = showdown_inline.group(1).strip()
+            if is_probable_player_name(actor):
+                key = actor.lower()
+                if key not in seen:
+                    seen.add(key)
+                    raw_names.append(actor)
+    return raw_names
 
 
-def canonicalize_name(name: str | None, players: list[str]) -> str | None:
+def canonicalize_players(raw_names: list[str]) -> tuple[list[str], dict[str, str]]:
+    canonical_players = [HERO_NAME]
+    alias_map = {normalize_player_token(HERO_NAME): HERO_NAME}
+    for raw in raw_names:
+        canonical = merge_player_name(raw, canonical_players)
+        alias_map[normalize_player_token(raw)] = canonical
+    deduped = []
+    seen = set()
+    for player in canonical_players:
+        key = normalize_player_token(player)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(HERO_NAME if key == normalize_player_token(HERO_NAME) else player)
+    if HERO_NAME not in deduped:
+        deduped.insert(0, HERO_NAME)
+    for player in deduped:
+        alias_map[normalize_player_token(player)] = player
+    return deduped, alias_map
+
+
+def canonicalize_name(name: str | None, players: list[str], alias_map: dict[str, str]) -> str | None:
     if not name:
         return None
-    normalized = name.lower().strip()
+    token = normalize_player_token(name)
+    if token == normalize_player_token(HERO_NAME):
+        return HERO_NAME
+    if token in alias_map:
+        return alias_map[token]
     for player in players:
-        if player.lower() == normalized:
-            return player
-    for player in players:
-        if player.lower().replace("0", "o") == normalized.replace("0", "o"):
+        if names_look_like_same_player(player, name):
+            alias_map[token] = player
             return player
     return name.strip()
 
@@ -326,61 +357,17 @@ def extract_inline_actor(line: str) -> tuple[str, str] | None:
     return None
 
 
-def enrich_players_from_actions(lines: list[str], players: list[str]) -> list[str]:
-    seen = {p.lower() for p in players}
-    enriched = list(players)
-    for line in lines:
-        cleaned = strip_heading_prefix(line)
-        showdown_inline = SHOWDOWN_INLINE_RE.match(cleaned)
-        if showdown_inline:
-            actor = showdown_inline.group(1).strip()
-            if actor and actor.lower() not in seen and len(extract_rank_only_cards(actor)) < 2:
-                seen.add(actor.lower())
-                enriched.append(actor)
-            continue
-        inline = extract_inline_actor(cleaned)
-        if not inline:
-            continue
-        actor, _ = inline
-        if actor and actor.lower() not in seen and len(extract_rank_only_cards(actor)) < 2 and not actor.upper().startswith("CARDS DEALT"):
-            seen.add(actor.lower())
-            enriched.append(actor)
-    return enriched
-
-
-def infer_hero_name(players: list[str], lines: list[str]) -> str | None:
-    preferred = ["Karmatoast40"]
-    for player in preferred:
-        if player in players:
-            return player
-    for line in lines:
-        match = re.match(r"([A-Za-z0-9_]+)\s+RECEIVES\s*:", line, flags=re.IGNORECASE)
-        if match:
-            return canonicalize_name(match.group(1), players)
-    return None
-
-
-def split_inline_name_action(line: str, players: list[str]) -> tuple[str | None, str] | None:
-    inline = extract_inline_actor(line)
-    if not inline:
-        return None
-    actor, segment = inline
-    return canonicalize_name(actor, players), segment
-
-
 def iter_action_matches(segment: str) -> list[tuple[int, int, dict[str, Any]]]:
     segment = strip_heading_prefix(segment).strip()
     if not segment:
         return []
-    matches: list[tuple[int, int, dict[str, Any]]] = []
+    matches = []
     for action_name, pattern in ACTION_PATTERNS:
         for match in pattern.finditer(segment):
             amount = None
             cards = None
             if action_name == "receives":
-                ranks = extract_rank_only_cards(match.group(1))
-                if len(ranks) >= 2:
-                    cards = ranks[:2]
+                cards = extract_strict_cards(match.group(1), expected=2)
             elif match.groups():
                 raw_amount = match.group(1)
                 if raw_amount not in (None, ""):
@@ -388,26 +375,12 @@ def iter_action_matches(segment: str) -> list[tuple[int, int, dict[str, Any]]]:
                         amount = float(raw_amount)
                     except (ValueError, TypeError):
                         amount = None
-            action = {
-                "action": action_name,
-                "amount_bb": amount,
-                "raw": segment,
-            }
+            action = {"action": action_name, "amount_bb": amount, "raw": segment}
             if cards:
                 action["cards"] = cards
             matches.append((match.start(), match.end(), action))
     matches.sort(key=lambda item: (item[0], item[1]))
     return matches
-
-
-def parse_action_segment(segment: str, player: str | None, street: str) -> dict[str, Any] | None:
-    matches = iter_action_matches(segment)
-    if not matches:
-        return None
-    action = dict(matches[0][2])
-    action["street"] = street
-    action["player"] = player
-    return action
 
 
 def assign_blind_owners(actions: list[dict[str, Any]], players: list[str], hero_name: str | None):
@@ -436,13 +409,7 @@ def extract_structural_actions(lines: list[str], board: dict[str, Any], showdown
         if marker not in STRUCTURAL_MARKERS:
             continue
         street, action_name = STRUCTURAL_MARKERS[marker]
-        action = {
-            "street": street,
-            "player": None,
-            "action": action_name,
-            "amount_bb": None,
-            "raw": marker,
-        }
+        action = {"street": street, "player": None, "action": action_name, "amount_bb": None, "raw": marker}
         if action_name == "flop_start":
             action["cards"] = board.get("flop", [])
         elif action_name == "turn_start":
@@ -459,101 +426,170 @@ def extract_structural_actions(lines: list[str], board: dict[str, Any], showdown
     return actions
 
 
-def parse_actions(
-    lines: list[str],
-    players: list[str],
-    hero_name: str | None = None,
-    hero_cards: list[str] | None = None,
-    board: dict[str, Any] | None = None,
-    showdown_present: bool = False,
-) -> list[dict[str, Any]]:
-    actions: list[dict[str, Any]] = []
+def normalize_street_name(upper: str) -> str:
+    if upper == "PRE-FLOP":
+        return "preflop"
+    if upper == "FLOP":
+        return "flop"
+    if upper == "TURN":
+        return "turn"
+    if upper == "RIVER":
+        return "river"
+    return "showdown"
+
+
+def infer_initial_order(street: str, players: list[str], hero_name: str | None) -> list[str]:
+    if len(players) != 2:
+        return players[:]
+    hero = hero_name if hero_name in players else players[0]
+    villain = players[1] if players[0] == hero else players[0]
+    if street == "preflop":
+        return [hero, villain]
+    return [villain, hero]
+
+
+def rebuild_queue_from_context(context_names: list[str], players: list[str], street: str, hero_name: str | None) -> deque[str]:
+    base_order = infer_initial_order(street, players, hero_name)
+    if len(players) != 2:
+        ordered = []
+        seen = set()
+        for name in context_names:
+            if name in players and name not in seen:
+                ordered.append(name)
+                seen.add(name)
+        for name in players:
+            if name not in seen:
+                ordered.append(name)
+        return deque(ordered)
+    if len(context_names) >= 2:
+        return deque(context_names[:2])
+    if len(context_names) == 1:
+        first = context_names[0]
+        second = next((p for p in base_order if p != first), None)
+        return deque([n for n in [first, second] if n])
+    return deque(base_order)
+
+
+def consume_implicit_actor(turn_queue: deque[str], fallback_order: list[str]) -> str | None:
+    if turn_queue:
+        actor = turn_queue.popleft()
+        turn_queue.append(actor)
+        return actor
+    return fallback_order[0] if fallback_order else None
+
+
+def rotate_from_explicit(turn_queue: deque[str], actor: str | None, fallback_order: list[str]):
+    if not actor:
+        return
+    if actor in turn_queue:
+        while turn_queue and turn_queue[0] != actor:
+            turn_queue.rotate(-1)
+        if turn_queue:
+            turn_queue.popleft()
+            turn_queue.append(actor)
+            turn_queue.rotate(-1)
+        return
+    if len(fallback_order) == 2 and actor in fallback_order:
+        other = fallback_order[1] if fallback_order[0] == actor else fallback_order[0]
+        turn_queue.clear()
+        turn_queue.extend([other, actor])
+
+
+def reconcile_showdown_winner(actions: list[dict[str, Any]], showdown: dict[str, Any] | None):
+    if not showdown or not showdown.get("winners"):
+        return actions
+    winner = showdown["winners"][0].get("player")
+    amount = showdown["winners"][0].get("amount_bb")
+    for action in actions:
+        if action.get("street") == "showdown" and action.get("action") == "wins":
+            action["player"] = winner
+            if amount is not None:
+                action["amount_bb"] = amount
+    return actions
+
+
+def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, board=None, showdown_present=False, showdown=None):
+    actions = []
     current_street = "preflop"
-    pending_player = None
+    player_fifo = deque(infer_initial_order(current_street, players, hero_name))
+    action_fifo = deque()
+    
     i = 0
+    def canonical(name):
+        return canonicalize_name(name, players, alias_map)
 
     while i < len(lines):
         line = lines[i]
         cleaned = strip_heading_prefix(line)
         upper = cleaned.upper()
 
-        if upper in STREETS or upper.startswith("SHOWDOWN"):
-            current_street = "showdown" if upper.startswith("SHOWDOWN") else upper.lower().replace("-", "")
-            showdown_inline = SHOWDOWN_INLINE_RE.match(cleaned)
-            pending_player = canonicalize_name(showdown_inline.group(1), players) if showdown_inline else None
+        # 1. Gestion des changements de rue
+        if upper in STREET_NAMES or upper.startswith("SHOWDOWN"):
+            current_street = normalize_street_name(upper if upper in STREET_NAMES else "SHOWDOWN")
+            player_fifo = deque(infer_initial_order(current_street, players, hero_name))
+            action_fifo.clear()
             i += 1
             continue
 
-        inline = split_inline_name_action(cleaned, players)
-        if inline:
-            player, segment = inline
-            for _, _, base_action in iter_action_matches(segment):
-                action = dict(base_action)
-                action["street"] = current_street
-                action["player"] = player
-                actions.append(action)
-            i += 1
-            continue
-
-        if is_probable_player_name(cleaned):
-            pending_player = canonicalize_name(cleaned, players)
-            i += 1
-            continue
-
-        if contains_action_words(cleaned):
-            combined = cleaned
-            next_line = strip_heading_prefix(lines[i + 1]) if i + 1 < len(lines) else ""
-            if next_line and AMOUNT_BB_RE.fullmatch(next_line):
-                combined = f"{combined} {next_line}"
-                i += 1
-            for _, _, base_action in iter_action_matches(combined):
-                action = dict(base_action)
-                action["street"] = current_street
-                action["player"] = pending_player
-                actions.append(action)
-            pending_player = None
-            i += 1
-            continue
-
+        # 2. EXTRACTION TOTALE (Le cœur du problème)
+        # On vérifie d'abord s'il y a un acteur explicite dans la ligne (ex: "Karmatoast Raises to 3")
+        inline_info = extract_inline_actor(cleaned)
+        
+        # On cherche toutes les actions dans la ligne
+        detected_actions = iter_action_matches(cleaned)
+        
+        # Si la ligne contient un nom explicite (inline), on l'ajoute à la file
+        if inline_info:
+            actor_name, _ = inline_info
+            player_fifo.append(canonical(actor_name))
+        # Sinon, si la ligne est JUSTE un nom, on l'ajoute
+        elif is_probable_player_name(cleaned):
+            player_fifo.append(canonical(cleaned))
+            
+        # On ajoute toutes les actions trouvées dans la file action
+        for _, _, base_action in detected_actions:
+            action_fifo.append(base_action)
+        
+        # 3. CONSOMMATION SYNCHRONISÉE
+        # On ne consomme que si on a au moins une action à attribuer
+        while action_fifo:
+            # Si on a pas de joueur, on ne peut pas consommer (on attend le prochain joueur)
+            if not player_fifo:
+                break
+                
+            actor = player_fifo.popleft()
+            base_action = action_fifo.popleft()
+            
+            action = dict(base_action)
+            action["street"] = current_street
+            action["player"] = actor
+            actions.append(action)
+            
+            # On réinsère le joueur à la fin pour le prochain tour
+            player_fifo.append(actor)
+        
         i += 1
 
+    # Injections finales et nettoyage
     if hero_name and hero_cards:
-        actions.insert(
-            0,
-            {
-                "street": "preflop",
-                "player": hero_name,
-                "action": "hero_cards",
-                "amount_bb": None,
-                "raw": "CARDS DEALT",
-                "cards": hero_cards,
-            },
-        )
-
-    board = board or {"flop": [], "turn": None, "river": None}
-    actions = extract_structural_actions(lines, board, showdown_present) + actions
+        actions.insert(0, {"street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
+    
+    actions = extract_structural_actions(lines, board or {}, showdown_present) + actions
     actions = assign_blind_owners(actions, players, hero_name)
+    actions = reconcile_showdown_winner(actions, showdown)
 
+    # Déduplication finale pour éviter les entrées fantômes
     deduped = []
     seen = set()
-    for action in actions:
-        key = (
-            action.get("street"),
-            action.get("player"),
-            action.get("action"),
-            action.get("amount_bb"),
-            tuple(action.get("cards", [])),
-            action.get("raw"),
-            action.get("showdown_present"),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(action)
+    for a in actions:
+        key = (a.get("street"), a.get("player"), a.get("action"), a.get("raw"))
+        if key not in seen:
+            deduped.append(a)
+            seen.add(key)
+            
     return deduped
 
-
-def parse_showdown(lines: list[str], players: list[str]) -> dict[str, Any] | None:
+def parse_showdown(lines, players, alias_map, hero_cards, board):
     idx = None
     current_player = None
     for i, line in enumerate(lines):
@@ -563,31 +599,29 @@ def parse_showdown(lines: list[str], players: list[str]) -> dict[str, Any] | Non
             idx = i
             inline = SHOWDOWN_INLINE_RE.match(cleaned)
             if inline:
-                current_player = canonicalize_name(inline.group(1).strip(), players)
+                current_player = canonicalize_name(inline.group(1).strip(), players, alias_map)
             break
     if idx is None:
         return None
-
     showdown = {"players": [], "winners": []}
     seen_players = set()
     seen_winners = set()
 
-    def ensure_player(name: str | None):
+    def ensure_player(name):
         if name and name not in seen_players:
             showdown["players"].append({"name": name, "hole_cards": []})
             seen_players.add(name)
 
     ensure_player(current_player)
-
-    for line in lines[idx + 1 :]:
+    for line in lines[idx + 1:]:
         cleaned = strip_heading_prefix(line)
         upper = cleaned.upper()
-        if upper in STREETS and not upper.startswith("SHOWDOWN") and upper != "SHOWDOWN":
+        if upper in STREET_NAMES and upper != "SHOWDOWN":
             break
-
-        inline = split_inline_name_action(cleaned, players)
+        inline = extract_inline_actor(cleaned)
         if inline:
-            player, segment = inline
+            actor, segment = inline
+            player = canonicalize_name(actor, players, alias_map)
             ensure_player(player)
             for _, _, base_action in iter_action_matches(segment):
                 if base_action["action"] == "wins":
@@ -595,38 +629,48 @@ def parse_showdown(lines: list[str], players: list[str]) -> dict[str, Any] | Non
                     if key not in seen_winners:
                         seen_winners.add(key)
                         showdown["winners"].append({"player": player, "amount_bb": base_action.get("amount_bb")})
-            current_player = player
+                    current_player = player
             continue
-
-        ranks = extract_rank_only_cards(cleaned)
-        if current_player and len(ranks) >= 2 and not cleaned.lower().startswith("pair:"):
-            for player_entry in showdown["players"]:
-                if player_entry["name"] == current_player and not player_entry.get("hole_cards"):
-                    player_entry["hole_cards"] = ranks[:2]
-                    break
-            continue
-
-        if current_player and ":" in cleaned and "receives" not in cleaned.lower():
-            for player_entry in showdown["players"]:
-                if player_entry["name"] == current_player:
-                    player_entry["made_hand"] = cleaned
-                    break
-            continue
-
         if is_probable_player_name(cleaned):
-            current_player = canonicalize_name(cleaned, players)
+            current_player = canonicalize_name(cleaned, players, alias_map)
             ensure_player(current_player)
             continue
-
-    for player_entry in showdown["players"]:
-        player_entry.setdefault("hole_cards", [])
-
+        if current_player and MADE_HAND_RE.search(cleaned):
+            for entry in showdown["players"]:
+                if entry["name"] == current_player:
+                    entry["made_hand"] = cleaned
+                    break
+            continue
+        cards = extract_strict_cards(cleaned, expected=2)
+        if current_player and cards:
+            if current_player == HERO_NAME and hero_cards and cards == hero_cards:
+                for entry in showdown["players"]:
+                    if entry["name"] == current_player and not entry.get("hole_cards"):
+                        entry["hole_cards"] = hero_cards[:2]
+                        break
+                continue
+            if cards == board.get("flop", [])[:2]:
+                continue
+            for entry in showdown["players"]:
+                if entry["name"] == current_player and not entry.get("hole_cards"):
+                    entry["hole_cards"] = cards[:2]
+                    break
+            continue
+        win_match = re.search(r"\bWINS\s+([0-9]+(?:\.[0-9]+)?)\s*BB\b", cleaned, flags=re.IGNORECASE)
+        if current_player and win_match:
+            amount = float(win_match.group(1))
+            key = (current_player, amount)
+            if key not in seen_winners:
+                seen_winners.add(key)
+                showdown["winners"].append({"player": current_player, "amount_bb": amount})
+    for entry in showdown["players"]:
+        entry.setdefault("hole_cards", [])
     if not showdown["players"] and not showdown["winners"]:
         return None
     return showdown
 
 
-def infer_current_street(board: dict[str, Any], showdown: dict[str, Any] | None, actions: list[dict[str, Any]]) -> str:
+def infer_current_street(board, showdown, actions):
     if showdown and (showdown.get("players") or showdown.get("winners")):
         return "showdown"
     if any(action.get("street") == "river" for action in actions):
@@ -644,19 +688,18 @@ def infer_current_street(board: dict[str, Any], showdown: dict[str, Any] | None,
     return "preflop"
 
 
-def build_events(state: dict[str, Any]) -> list[dict[str, Any]]:
+def build_events(state):
     events = []
     seq = 1
     hand_id = state.get("hand_id")
 
-    def push(event_type: str, street: str | None = None, **payload: Any):
+    def push(event_type, street=None, **payload):
         nonlocal seq
         events.append({"seq": seq, "hand_id": hand_id, "street": street, "event": event_type, **payload})
         seq += 1
 
     if hand_id:
         push("hand_start", street="preflop")
-
     for action in state.get("actions", []):
         action_name = action["action"]
         if action_name in NON_ACTION_EVENTS:
@@ -676,7 +719,6 @@ def build_events(state: dict[str, Any]) -> list[dict[str, Any]]:
         if "cards" in action:
             payload["cards"] = action["cards"]
         push("action", street=action.get("street"), **payload)
-
     board = state.get("board", {})
     if board.get("flop"):
         push("flop_reveal", street="flop", cards=board["flop"])
@@ -684,7 +726,6 @@ def build_events(state: dict[str, Any]) -> list[dict[str, Any]]:
         push("turn_reveal", street="turn", card=board["turn"])
     if board.get("river"):
         push("river_reveal", street="river", card=board["river"])
-
     showdown = state.get("showdown")
     if showdown:
         push("showdown", street="showdown", data=showdown)
@@ -694,24 +735,22 @@ def build_events(state: dict[str, Any]) -> list[dict[str, Any]]:
 def parse_poker_ocr_text(raw_text: str, image_path: Path) -> dict[str, Any]:
     raw_text = clean_text(raw_text)
     lines = split_lines(raw_text)
-    players = collect_player_names(lines)
-    players = enrich_players_from_actions(lines, players)
-    hero_name = infer_hero_name(players, lines)
-    if hero_name and hero_name not in players:
-        players = [hero_name] + players
-
+    raw_players = collect_raw_player_names(lines)
+    players, alias_map = canonicalize_players(raw_players)
+    hero_name = HERO_NAME
     hero_cards = parse_hero_cards(lines, raw_text=raw_text)
     board = parse_board(lines)
-    showdown = parse_showdown(lines, players)
+    showdown = parse_showdown(lines, players, alias_map, hero_cards, board)
     actions = parse_actions(
         lines,
         players,
+        alias_map,
         hero_name=hero_name,
         hero_cards=hero_cards,
         board=board,
         showdown_present=showdown is not None,
+        showdown=showdown,
     )
-
     state = {
         "timestamp_utc": datetime.utcnow().isoformat() + "Z",
         "source_image": image_path.name,
