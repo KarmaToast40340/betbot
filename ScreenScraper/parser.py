@@ -523,83 +523,62 @@ def iter_action_matches(line):
         results.append(data)
     return results
 
-from collections import deque
-import re
-
-def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, board=None, showdown_present=False, showdown=None):
+def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, **kwargs):
     actions = []
-    player_queue = deque()
-    action_queue = deque()
+    norm_players = [{"name": p} if isinstance(p, str) else p for p in players]
+    player_names = [p["name"] for p in norm_players]
     
     current_street = "blinds"
+    current_idx = 0 
+    pending_amount = None # Buffer pour le montant
     
     for line in lines:
         line_clean = line.strip()
+        if not line_clean: continue
         upper = line_clean.upper()
-        if not line_clean: 
-            continue
 
-        # 1. Gestion des changements de street
-        if upper in STREET_NAMES or upper.startswith("SHOWDOWN"):
-            current_street = normalize_street_name(upper if upper in STREET_NAMES else "SHOWDOWN")
-            # On vide les files au changement de street pour éviter les couplages aberrants
-            player_queue.clear()
-            action_queue.clear()
-            continue
-            
-        # 2. Détection
-        detected_actions = iter_action_matches(line_clean)
-        is_player = is_probable_player_name(line_clean)
+        # 1. Gestion des transitions
+        if "PRE-FLOP" in upper or "CARDS DEALT" in upper: current_street = "preflop"; continue
+        elif "FLOP" in upper: current_street = "flop"; continue
+        elif "TURN" in upper: current_street = "turn"; continue
+        elif "RIVER" in upper: current_street = "river"; continue
+        elif "SHOWDOWN" in upper: current_street = "showdown"; continue
+
+        # 2. Capture des montants isolés (ex: "(0.5 BB)")
+        amount_match = re.search(r"([\d\.]+)\s*BB", line_clean, re.IGNORECASE)
         
-        # Logique : Si on trouve un joueur, on l'ajoute.
-        # Si on trouve une action, on l'ajoute.
-        # Le couplage FIFO se chargera de les associer intelligemment.
-        if is_player:
-            player_queue.append(canonicalize_name(line_clean, players, alias_map))
-            
-        if detected_actions:
-            for act in detected_actions:
-                action_queue.append(act)
+        # 3. Identification joueur
+        found_name = next((name for name in player_names if name.lower() in line_clean.lower()), None)
+        if found_name:
+            current_idx = player_names.index(found_name)
+
+        # 4. Capture d'actions
+        pattern = r"(?P<act>post\s+small\s+blind|post\s+big\s+blind|calls|raises|bets|folds|checks|check|fold|call|bet|wins)"
+        matches = list(re.finditer(pattern, line_clean, re.IGNORECASE))
         
-        # 3. Moteur de couplage (FIFO)
-        # On tente de coupler tant qu'on a les deux éléments
-        while action_queue and player_queue:
-            action_data = action_queue.popleft()
-            player = player_queue.popleft()
+        for m in matches:
+            act = m.group("act").lower().replace(" ", "_")
+            if act in ["check", "call", "fold", "bet"]: act += "s"
             
+            # On crée l'action
             action_entry = {
-                "seq": len(actions),
                 "street": current_street,
-                "player": player,
-                "action": action_data["action"]
+                "player": player_names[current_idx],
+                "action": act,
+                "amount_bb": float(amount_match.group(1)) if amount_match else None
             }
-            if "amount_bb" in action_data and action_data["amount_bb"] is not None:
-                action_entry["amount_bb"] = action_data["amount_bb"]
-            
             actions.append(action_entry)
-
-    # --- Post-traitement ---
-    if hero_name and hero_cards:
-        actions.insert(0, {"seq": 0, "street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
-    
-    structural = extract_structural_actions(lines, board or {}, showdown_present)
-    
-    deduped = []
-    seen = set()
-    for a in structural + actions:
-        # On définit une clé unique pour éviter les doublons structurels
-        key = (a.get("street"), a.get("player"), a.get("action"), a.get("amount_bb"))
-        if a.get("player") is None:
-            if key not in seen:
-                deduped.append(a)
-                seen.add(key)
-        else:
-            deduped.append(a)
             
-    final_actions = assign_blind_owners(deduped, players, hero_name)
-    final_actions = reconcile_showdown_winner(final_actions, showdown)
-    
-    return final_actions
+            # Rotation joueur uniquement si ce n'est pas un post de blind
+            if "blind" not in act:
+                current_idx = (current_idx + 1) % len(player_names)
+
+    # Injection Hero
+    if hero_name and hero_cards:
+        actions.insert(0, {"street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
+        
+    return actions
+
 
 def parse_showdown(lines, players, alias_map, hero_cards, board):
     idx = None
