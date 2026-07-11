@@ -65,6 +65,9 @@ BANNED_NAME_TOKENS = {
     "RIVER",
     "SHOWDOWN",
     "NULL",
+    "ALLOWING 30 SECONDS FOR",
+    "RECONNECT",
+
 }
 
 
@@ -523,60 +526,55 @@ def iter_action_matches(line):
         results.append(data)
     return results
 
+from collections import deque
+
 def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, **kwargs):
     actions = []
-    norm_players = [{"name": p} if isinstance(p, str) else p for p in players]
-    player_names = [p["name"] for p in norm_players]
+    player_queue = deque()
+    action_queue = deque()
     
     current_street = "blinds"
-    current_idx = 0 
-    pending_amount = None # Buffer pour le montant
-    
+    player_names = players
+
     for line in lines:
         line_clean = line.strip()
         if not line_clean: continue
         upper = line_clean.upper()
 
-        # 1. Gestion des transitions
+        # 1. Mise à jour Street (ne pas toucher aux queues ici)
         if "PRE-FLOP" in upper or "CARDS DEALT" in upper: current_street = "preflop"; continue
-        elif "FLOP" in upper: current_street = "flop"; continue
-        elif "TURN" in upper: current_street = "turn"; continue
-        elif "RIVER" in upper: current_street = "river"; continue
-        elif "SHOWDOWN" in upper: current_street = "showdown"; continue
-
-        # 2. Capture des montants isolés (ex: "(0.5 BB)")
-        amount_match = re.search(r"([\d\.]+)\s*BB", line_clean, re.IGNORECASE)
+        if "FLOP" in upper: current_street = "flop"; continue
         
-        # 3. Identification joueur
+        # 2. Remplissage FIFO avec FILTRES STRICTS
+        # Détection joueur : on ne prend QUE si c'est un nom valide dans ta liste
         found_name = next((name for name in player_names if name.lower() in line_clean.lower()), None)
         if found_name:
-            current_idx = player_names.index(found_name)
-
-        # 4. Capture d'actions
-        pattern = r"(?P<act>post\s+small\s+blind|post\s+big\s+blind|calls|raises|bets|folds|checks|check|fold|call|bet|wins)"
-        matches = list(re.finditer(pattern, line_clean, re.IGNORECASE))
+            player_queue.append(found_name)
         
-        for m in matches:
-            act = m.group("act").lower().replace(" ", "_")
-            if act in ["check", "call", "fold", "bet"]: act += "s"
+        # Détection action : Regex précise qui NE PREND PAS les noms de joueurs
+        # On capture l'action ET le montant dans le même match
+        pattern = r"(?P<act>post\s+small\s+blind|post\s+big\s+blind|calls|raises|bets|folds|checks|check|fold|call|bet|wins)(?:\s+(?:to|an)?\s*(?P<amt>[\d\.]+))?"
+        match = re.search(pattern, line_clean, re.IGNORECASE)
+        
+        if match:
+            action_queue.append({
+                "action": match.group("act").lower().replace(" ", "_"),
+                "amount": float(match.group("amt")) if match.group("amt") else None
+            })
+        
+        # 3. Synchronisation FIFO (Le moteur)
+        # On ne pop que si les deux files ont au moins un élément
+        while player_queue and action_queue:
+            p = player_queue.popleft()
+            a = action_queue.popleft()
             
-            # On crée l'action
-            action_entry = {
+            actions.append({
                 "street": current_street,
-                "player": player_names[current_idx],
-                "action": act,
-                "amount_bb": float(amount_match.group(1)) if amount_match else None
-            }
-            actions.append(action_entry)
-            
-            # Rotation joueur uniquement si ce n'est pas un post de blind
-            if "blind" not in act:
-                current_idx = (current_idx + 1) % len(player_names)
+                "player": p,
+                "action": a["action"],
+                "amount_bb": a["amount"]
+            })
 
-    # Injection Hero
-    if hero_name and hero_cards:
-        actions.insert(0, {"street": "preflop", "player": hero_name, "action": "hero_cards", "cards": hero_cards})
-        
     return actions
 
 
