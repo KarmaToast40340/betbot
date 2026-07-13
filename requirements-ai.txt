@@ -1,0 +1,9 @@
+# PyTorch CPU-only build (no CUDA/ROCm needed for V1 CPU-only training)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1
+
+# Dataset download from the HuggingFace Hub (RZ412/PokerBench)
+huggingface_hub==0.24.6
+
+# Progress bars for download / training loops
+tqdm==4.66.4

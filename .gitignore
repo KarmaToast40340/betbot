@@ -65,6 +65,10 @@ runs/
 data/
 datasets/
 
+# AI training checkpoints (PokerBench baseline)
+AI/train/checkpoints/
+*.pt
+
 # OS Files
 .DS_Store
 Thumbs.db

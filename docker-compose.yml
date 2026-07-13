@@ -21,7 +21,7 @@ services:
   screenscraper:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.screenscraper
     container_name: betbot-screenscraper
     working_dir: /workspace
     network_mode: host
@@ -42,3 +42,21 @@ services:
     restart: "no"
     depends_on:
       - paddleocr-vlm-server
+
+  betbot-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.ia
+    container_name: betbot-agent-train
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    environment:
+      PYTHONUNBUFFERED: "1"
+      HF_HOME: "/root/.cache/huggingface"
+      BETBOT_DATA_DIR: "/workspace/data"
+      BETBOT_AI_DIR: "/workspace/AI"
+    command: python /workspace/AI/train/train.py
+    restart: "no"
+    profiles: ["train"]

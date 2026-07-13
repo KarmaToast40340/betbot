@@ -21,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt /workspace/requirements.txt
+COPY requirements-sc.txt /workspace/requirements-sc.txt
 RUN pip install --upgrade pip && \
-    pip install -r /workspace/requirements.txt
+    pip install -r /workspace/requirements-sc.txt
 
 RUN python -m pip install -U "paddleocr[doc-parser]" safetensors
 
