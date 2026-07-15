@@ -49,6 +49,23 @@ services:
       dockerfile: Dockerfile.ia
     container_name: betbot-agent-train
     working_dir: /workspace
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      # Numeric GIDs, not names: the rocm/pytorch image's /etc/group doesn't
+      # define "render", and docker resolves group_add names against the
+      # container's /etc/group, not the host's. Defaults below match this
+      # host (`getent group render video`); override via RENDER_GID/VIDEO_GID
+      # env vars if rebuilding on a different machine.
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-992}"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    shm_size: "8gb"
     volumes:
       - ./:/workspace
       - ~/.cache/huggingface:/root/.cache/huggingface
@@ -57,6 +74,9 @@ services:
       HF_HOME: "/root/.cache/huggingface"
       BETBOT_DATA_DIR: "/workspace/data"
       BETBOT_AI_DIR: "/workspace/AI"
+      # RX 7700 XT is gfx1101, not officially in ROCm's support list yet;
+      # this makes it identify as the supported gfx1100 (7900-series) target.
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
     command: python /workspace/AI/train/train.py
     restart: "no"
     profiles: ["train"]

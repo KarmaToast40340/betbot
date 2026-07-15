@@ -1,15 +1,16 @@
-FROM python:3.11-slim
+# ROCm-enabled PyTorch for the AMD Radeon RX 7700 XT. Uses AMD's official
+# prebuilt image instead of installing ROCm userspace libs by hand into a
+# slim image — far less fragile, and torch is already built against ROCm.
+FROM rocm/pytorch:latest
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /workspace
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements-ai.txt /tmp/requirements-ai.txt
-RUN pip install --upgrade pip && pip install -r /tmp/requirements-ai.txt
+# Only the non-torch deps: the base image already ships a ROCm-built torch.
+# Installing from requirements-ai.txt (pinned to CPU wheels, used for local
+# non-Docker dev) would silently overwrite it and drop GPU support.
+RUN pip install --upgrade pip && pip install huggingface_hub==0.24.6 tqdm==4.66.4
 
 CMD ["python", "/workspace/AI/train/train.py"]

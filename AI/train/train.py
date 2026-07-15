@@ -10,10 +10,16 @@ import random
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 import dataset
 import vocab
 from model import PokerTransformerClassifier
+
+# ROCm-built torch exposes the GPU through the same torch.cuda API as CUDA,
+# so this picks up the AMD GPU automatically inside the ROCm container and
+# falls back to CPU for local (non-Docker) dev.
+DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 AI_DIR = os.environ.get("BETBOT_AI_DIR", "AI")
 DEFAULT_TRAIN_PATH = os.path.join(AI_DIR, "Training", "data", "processed", "train.jsonl")
@@ -34,8 +40,7 @@ def parse_args():
     parser.add_argument("--max-val-samples", type=int, default=None)
     parser.add_argument("--checkpoint-dir", default=DEFAULT_CHECKPOINT_DIR)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", default="cpu")
-    parser.add_argument("--log-every", type=int, default=100)
+    parser.add_argument("--device", default=DEFAULT_DEVICE)
     parser.add_argument("--num-workers", type=int, default=0)
     return parser.parse_args()
 
@@ -57,7 +62,7 @@ def compute_majority_baseline(loader):
     return vocab.ID2LABEL[majority_id], counts[majority_id] / total
 
 
-def evaluate(model, loader, device, loss_fn):
+def evaluate(model, loader, device, loss_fn, desc="eval"):
     model.eval()
     total_loss = 0.0
     total_correct = 0
@@ -66,7 +71,7 @@ def evaluate(model, loader, device, loss_fn):
     confusion = [[0] * num_classes for _ in range(num_classes)]
 
     with torch.no_grad():
-        for batch in loader:
+        for batch in tqdm(loader, desc=desc, unit="batch", leave=False):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
@@ -100,6 +105,7 @@ def print_confusion(confusion):
 def main():
     args = parse_args()
     set_seed(args.seed)
+    print(f"Using device: {args.device}")
 
     train_loader = dataset.make_dataloader(
         args.train_path, args.batch_size, shuffle=True,
@@ -134,17 +140,17 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         running_loss = 0.0
-        for step, batch in enumerate(train_loader, start=1):
+        pbar = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", unit="batch")
+        for step, batch in enumerate(pbar, start=1):
             optimizer.zero_grad()
             logits = model(batch["input_ids"].to(args.device), batch["attention_mask"].to(args.device))
             loss = loss_fn(logits, batch["labels"].to(args.device))
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            if step % args.log_every == 0:
-                print(f"epoch {epoch} step {step} train_loss={running_loss / step:.4f}")
+            pbar.set_postfix(loss=f"{running_loss / step:.4f}")
 
-        val_metrics = evaluate(model, val_loader, args.device, loss_fn)
+        val_metrics = evaluate(model, val_loader, args.device, loss_fn, desc=f"epoch {epoch} val")
         print(
             f"epoch {epoch} DONE train_loss={running_loss / max(len(train_loader), 1):.4f} "
             f"val_loss={val_metrics['loss']:.4f} val_acc={val_metrics['accuracy']:.4f} "
@@ -169,7 +175,7 @@ def main():
         test_loader = dataset.make_dataloader(
             args.test_path, args.batch_size, shuffle=False, num_workers=args.num_workers,
         )
-        test_metrics = evaluate(model, test_loader, args.device, loss_fn)
+        test_metrics = evaluate(model, test_loader, args.device, loss_fn, desc="final test")
         _, maj_acc_test = compute_majority_baseline(test_loader)
         print(f"FINAL TEST: acc={test_metrics['accuracy']:.4f} (majority_baseline={maj_acc_test:.4f})")
     else:

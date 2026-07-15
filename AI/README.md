@@ -25,7 +25,8 @@ Le normaliser n'est pas encore testé mais son but est de récupérer les mains 
     "turn": [],
     "river": []
   }
-}```
+}
+```
 
 
 ### L'ENTRAINEMENT EST POUR LE MOMENT FAIT SANS DETECTION DES COULEURS
@@ -101,3 +102,18 @@ docker compose --profile train run --rm betbot-agent \
 ```
 
 Checkpoints écrits dans `AI/train/checkpoints/` (`last.pt` à chaque epoch, `best.pt` sur amélioration de la val accuracy). Chaque checkpoint embarque ses hyperparamètres et un snapshot du vocabulaire (`AI/train/vocab.py`), donc une future inférence peut le recharger sans dépendre du code d'entraînement.
+
+## GPU (AMD RX 7700 XT / ROCm)
+
+`Dockerfile.ia` part de l'image officielle `rocm/pytorch:latest` (torch déjà compilé pour ROCm), et `docker-compose.yml` passe `/dev/kfd`+`/dev/dri` au conteneur `betbot-agent`. La RX 7700 XT (gfx1101) n'est pas officiellement supportée par ROCm — `HSA_OVERRIDE_GFX_VERSION=11.0.0` (déjà dans le compose) la fait s'identifier comme une 7900 (gfx1100, supportée). `AI/train/train.py` détecte automatiquement le GPU via `torch.cuda.is_available()` (ROCm expose la même API) et l'affiche au démarrage (`Using device: cuda` ou `cpu`).
+
+Après `docker compose --profile train build betbot-agent`, vérifier que le GPU est bien détecté avant de lancer un entraînement complet :
+
+```bash
+docker compose --profile train run --rm betbot-agent \
+  python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)"
+```
+
+Si ça affiche `False`, le passthrough ou l'override GFX ne fonctionne pas sur cette machine — retomber sur `--device cpu` en attendant.
+
+**Note permissions** : les conteneurs Docker tournent en root ; si `sudo docker compose` a déjà écrit dans `AI/Training/data/` ou `AI/train/checkpoints/`, ces fichiers appartiennent à root et ne sont plus modifiables par les scripts lancés en dehors de Docker (hors sudo). `sudo chown -R $USER:$USER AI/Training/data AI/train/checkpoints` si besoin de repasser en local.

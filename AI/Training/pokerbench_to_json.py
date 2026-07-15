@@ -227,6 +227,7 @@ def convert_postflop_row(row, idx):
 
 def convert_csv(input_csv, output_jsonl, mode="auto"):
     count = 0
+    Path(output_jsonl).parent.mkdir(parents=True, exist_ok=True)
     with open(input_csv, "r", encoding="utf-8") as fin, open(output_jsonl, "w", encoding="utf-8") as fout:
         reader = csv.DictReader(fin)
         fieldnames = reader.fieldnames or []
