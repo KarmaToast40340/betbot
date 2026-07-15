@@ -9,6 +9,7 @@ class PokerTransformerClassifier(nn.Module):
         self,
         vocab_size,
         num_classes=6,
+        num_amount_buckets=10,
         d_model=128,
         nhead=4,
         num_layers=2,
@@ -32,6 +33,10 @@ class PokerTransformerClassifier(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(d_model, num_classes)
+        # Only supervised on bet/raise rows (see vocab.SIZING_ACTIONS) — the
+        # network still produces this head for every input, the masking
+        # happens in the training loss, not here.
+        self.amount_classifier = nn.Linear(d_model, num_amount_buckets)
 
     def forward(self, input_ids, attention_mask):
         # input_ids: (B, L), attention_mask: (B, L) with 1=real token, 0=pad
@@ -45,4 +50,4 @@ class PokerTransformerClassifier(nn.Module):
         mask_f = attention_mask.unsqueeze(-1).float()
         pooled = (encoded * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1)
         pooled = self.dropout(pooled)
-        return self.classifier(pooled)
+        return self.classifier(pooled), self.amount_classifier(pooled)

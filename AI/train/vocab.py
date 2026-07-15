@@ -52,6 +52,11 @@ ACTION_TOKEN_MAP = {
 AMOUNT_BUCKET_EDGES = [1, 2, 4, 7, 12, 20, 35, 60, 100]
 NUM_AMOUNT_BUCKETS = len(AMOUNT_BUCKET_EDGES) + 1
 
+# Pot size reuses the same bucket edges as bet/raise amounts (same unit, bb) —
+# a distinct token namespace so the model can tell "this is the pot" apart
+# from "this is a bet size" even though the underlying buckets are identical.
+POT_UNK = "<POT_UNK>"
+
 MAX_SEQ_LEN = 64
 
 LABEL2ID = {name: i for i, name in enumerate(ACTION_NAMES)}
@@ -69,6 +74,8 @@ def _build_vocab():
     tokens += [f"<RANK_{r}>" for r in RANK_ORDER]
     tokens += list(ACTION_TOKEN_MAP.values())
     tokens += [f"<AMT_BUCKET_{i}>" for i in range(NUM_AMOUNT_BUCKETS)]
+    tokens += [f"<POT_BUCKET_{i}>" for i in range(NUM_AMOUNT_BUCKETS)]
+    tokens += [POT_UNK]
     return tokens
 
 
@@ -84,10 +91,17 @@ _HERO_POS_TOKEN_ID = {pos: TOKEN_TO_ID[f"<HERO_POS_{pos}>"] for pos in HERO_POSI
 _RANK_TOKEN_ID = {r: TOKEN_TO_ID[f"<RANK_{r}>"] for r in RANK_ORDER}
 _ACTION_TOKEN_ID = {name: TOKEN_TO_ID[tok] for name, tok in ACTION_TOKEN_MAP.items()}
 _AMOUNT_BUCKET_TOKEN_ID = [TOKEN_TO_ID[f"<AMT_BUCKET_{i}>"] for i in range(NUM_AMOUNT_BUCKETS)]
+_POT_BUCKET_TOKEN_ID = [TOKEN_TO_ID[f"<POT_BUCKET_{i}>"] for i in range(NUM_AMOUNT_BUCKETS)]
 
 
 def bucket_amount(amount_bb):
     return bisect.bisect_right(AMOUNT_BUCKET_EDGES, amount_bb)
+
+
+def pot_bucket_token(pot_bb):
+    if pot_bb is None:
+        return TOKEN_TO_ID[POT_UNK]
+    return _POT_BUCKET_TOKEN_ID[bucket_amount(pot_bb)]
 
 
 def num_players_token(num_players):
@@ -131,6 +145,7 @@ def encode_record(record):
     tokens = [
         num_players_token(record.get("num_players")),
         hero_position_token(hero_name),
+        pot_bucket_token(record.get("pot_bb")),
         TOKEN_TO_ID[HOLE],
     ]
     for r in (hero.get("cards_dealt") or [])[:2]:
@@ -172,10 +187,37 @@ def encode_label(record):
     return LABEL2ID[record["label"]["action"]]
 
 
+# Only bet/raise carry a meaningful sizing decision — all_in is implicitly
+# "whatever's left in the stack", fold/check/call have no amount at all.
+SIZING_ACTIONS = {"bet", "raise"}
+
+
+def needs_amount_label(record):
+    return (record.get("label") or {}).get("action") in SIZING_ACTIONS
+
+
+def encode_amount_label(record):
+    amount = (record.get("label") or {}).get("amount_bb")
+    if amount is None:
+        return 0
+    return bucket_amount(amount)
+
+
+def format_amount_bucket(bucket_id):
+    edges = AMOUNT_BUCKET_EDGES
+    if bucket_id == 0:
+        return f"<{edges[0]}bb", edges[0] / 2
+    if bucket_id >= len(edges):
+        return f">={edges[-1]}bb", float(edges[-1])
+    lo, hi = edges[bucket_id - 1], edges[bucket_id]
+    return f"{lo}-{hi}bb", (lo + hi) / 2
+
+
 def export_snapshot():
     return {
         "token_to_id": TOKEN_TO_ID,
         "amount_bucket_edges": AMOUNT_BUCKET_EDGES,
+        "num_amount_buckets": NUM_AMOUNT_BUCKETS,
         "rank_order": RANK_ORDER,
         "label_to_id": LABEL2ID,
         "max_seq_len": MAX_SEQ_LEN,

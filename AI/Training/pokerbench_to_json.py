@@ -162,6 +162,7 @@ def convert_preflop_row(row, idx):
         "hand_id": row.get("hand_id") or f"pokerbench_preflop_{idx}",
         "num_players": int(row["num_players"]) if row.get("num_players") not in (None, "") else None,
         "blinds": {"sb": None, "bb": 1.0},
+        "pot_bb": to_float_or_none(row.get("pot_size")),
         "hero": {
             "name": hero_pos,
             "cards_dealt": split_hole_cards_rank_only(hero_holding),
@@ -193,6 +194,7 @@ def convert_postflop_row(row, idx):
         "hand_id": row.get("hand_id") or f"pokerbench_postflop_{idx}",
         "num_players": int(row["num_players"]) if row.get("num_players") not in (None, "") else 2,
         "blinds": {"sb": None, "bb": 1.0},
+        "pot_bb": to_float_or_none(row.get("pot_size")),
         "hero": {
             "name": hero_pos,
             "cards_dealt": split_hole_cards_rank_only(holding),

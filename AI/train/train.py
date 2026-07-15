@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--max-train-samples", type=int, default=None)
     parser.add_argument("--max-val-samples", type=int, default=None)
     parser.add_argument("--checkpoint-dir", default=DEFAULT_CHECKPOINT_DIR)
+    parser.add_argument("--amount-loss-weight", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=DEFAULT_DEVICE)
     parser.add_argument("--num-workers", type=int, default=0)
@@ -62,27 +63,49 @@ def compute_majority_baseline(loader):
     return vocab.ID2LABEL[majority_id], counts[majority_id] / total
 
 
-def evaluate(model, loader, device, loss_fn, desc="eval"):
+def compute_action_and_amount_loss(model, batch, device, loss_fn, amount_loss_weight):
+    input_ids = batch["input_ids"].to(device)
+    attention_mask = batch["attention_mask"].to(device)
+    labels = batch["labels"].to(device)
+    amount_labels = batch["amount_labels"].to(device)
+    amount_valid = batch["amount_valid"].to(device)
+
+    action_logits, amount_logits = model(input_ids, attention_mask)
+    action_loss = loss_fn(action_logits, labels)
+    if amount_valid.any():
+        amount_loss = loss_fn(amount_logits[amount_valid], amount_labels[amount_valid])
+    else:
+        amount_loss = torch.zeros((), device=device)
+    loss = action_loss + amount_loss_weight * amount_loss
+    return loss, action_loss, amount_loss, action_logits, amount_logits, labels, amount_labels, amount_valid
+
+
+def evaluate(model, loader, device, loss_fn, amount_loss_weight, desc="eval"):
     model.eval()
     total_loss = 0.0
     total_correct = 0
     total_count = 0
+    total_amount_correct = 0
+    total_amount_count = 0
     num_classes = len(vocab.LABEL2ID)
     confusion = [[0] * num_classes for _ in range(num_classes)]
 
     with torch.no_grad():
         for batch in tqdm(loader, desc=desc, unit="batch", leave=False):
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
-
-            logits = model(input_ids, attention_mask)
-            loss = loss_fn(logits, labels)
+            (loss, _, _, action_logits, amount_logits,
+             labels, amount_labels, amount_valid) = compute_action_and_amount_loss(
+                model, batch, device, loss_fn, amount_loss_weight,
+            )
             total_loss += loss.item() * labels.size(0)
 
-            preds = logits.argmax(dim=-1)
+            preds = action_logits.argmax(dim=-1)
             total_correct += (preds == labels).sum().item()
             total_count += labels.size(0)
+
+            if amount_valid.any():
+                amount_preds = amount_logits.argmax(dim=-1)
+                total_amount_correct += (amount_preds[amount_valid] == amount_labels[amount_valid]).sum().item()
+                total_amount_count += amount_valid.sum().item()
 
             for true_id, pred_id in zip(labels.tolist(), preds.tolist()):
                 confusion[true_id][pred_id] += 1
@@ -90,6 +113,8 @@ def evaluate(model, loader, device, loss_fn, desc="eval"):
     return {
         "loss": total_loss / max(total_count, 1),
         "accuracy": total_correct / max(total_count, 1),
+        "amount_accuracy": total_amount_correct / max(total_amount_count, 1),
+        "amount_count": total_amount_count,
         "confusion": confusion,
     }
 
@@ -119,6 +144,7 @@ def main():
     model_config = {
         "vocab_size": vocab.VOCAB_SIZE,
         "num_classes": len(vocab.LABEL2ID),
+        "num_amount_buckets": vocab.NUM_AMOUNT_BUCKETS,
         "d_model": 128,
         "nhead": 4,
         "num_layers": 2,
@@ -143,17 +169,25 @@ def main():
         pbar = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", unit="batch")
         for step, batch in enumerate(pbar, start=1):
             optimizer.zero_grad()
-            logits = model(batch["input_ids"].to(args.device), batch["attention_mask"].to(args.device))
-            loss = loss_fn(logits, batch["labels"].to(args.device))
+            loss, action_loss, amount_loss, *_ = compute_action_and_amount_loss(
+                model, batch, args.device, loss_fn, args.amount_loss_weight,
+            )
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            pbar.set_postfix(loss=f"{running_loss / step:.4f}")
+            pbar.set_postfix(
+                loss=f"{running_loss / step:.4f}",
+                action=f"{action_loss.item():.4f}",
+                amount=f"{amount_loss.item():.4f}",
+            )
 
-        val_metrics = evaluate(model, val_loader, args.device, loss_fn, desc=f"epoch {epoch} val")
+        val_metrics = evaluate(
+            model, val_loader, args.device, loss_fn, args.amount_loss_weight, desc=f"epoch {epoch} val",
+        )
         print(
             f"epoch {epoch} DONE train_loss={running_loss / max(len(train_loader), 1):.4f} "
             f"val_loss={val_metrics['loss']:.4f} val_acc={val_metrics['accuracy']:.4f} "
+            f"val_amount_acc={val_metrics['amount_accuracy']:.4f} (n={val_metrics['amount_count']}) "
             f"(majority_baseline={maj_acc:.4f})"
         )
         print_confusion(val_metrics["confusion"])
@@ -164,6 +198,7 @@ def main():
             "vocab": vocab.export_snapshot(),
             "epoch": epoch,
             "val_accuracy": val_metrics["accuracy"],
+            "val_amount_accuracy": val_metrics["amount_accuracy"],
         }
         torch.save(checkpoint, os.path.join(args.checkpoint_dir, "last.pt"))
         if val_metrics["accuracy"] > best_val_acc:
@@ -175,9 +210,14 @@ def main():
         test_loader = dataset.make_dataloader(
             args.test_path, args.batch_size, shuffle=False, num_workers=args.num_workers,
         )
-        test_metrics = evaluate(model, test_loader, args.device, loss_fn, desc="final test")
+        test_metrics = evaluate(
+            model, test_loader, args.device, loss_fn, args.amount_loss_weight, desc="final test",
+        )
         _, maj_acc_test = compute_majority_baseline(test_loader)
-        print(f"FINAL TEST: acc={test_metrics['accuracy']:.4f} (majority_baseline={maj_acc_test:.4f})")
+        print(
+            f"FINAL TEST: acc={test_metrics['accuracy']:.4f} (majority_baseline={maj_acc_test:.4f}) "
+            f"amount_acc={test_metrics['amount_accuracy']:.4f} (n={test_metrics['amount_count']})"
+        )
     else:
         print(f"No test set found at {args.test_path}, skipping final test evaluation.")
 

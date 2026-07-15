@@ -45,9 +45,19 @@ Le normaliser n'est pas encore testé mais son but est de récupérer les mains 
 
 `label.action` est la décision correcte (calculée par un solveur) que le héros aurait dû prendre. C'est la cible d'entraînement du baseline V1.
 
-## Vocabulaire d'action (baseline V1)
+## Champ `pot_bb` (données PokerBench uniquement)
 
-Le modèle V1 prédit uniquement le type d'action (classification à 6 classes) ; `amount_bb` n'est pas encore prédit.
+`pokerbench_to_json.py` extrait aussi `pot_bb` (colonne `pot_size` du CSV, en bb) au niveau racine de la main standardisée :
+
+```json
+{ "source": "pokerbench", "...": "...", "pot_bb": 21.0 }
+```
+
+Encodé en entrée via un bucket dédié (`<POT_BUCKET_X>`, mêmes tranches que les montants de mise mais namespace de token séparé) juste après la position du héros dans la séquence — voir `AI/train/vocab.py`. Absent des mains `source: "ocr"` (le pipeline OCR n'extrait pas la taille du pot) ; retombe sur `<POT_UNK>` si absent.
+
+## Vocabulaire d'action + sizing (V2)
+
+Le modèle prédit le type d'action (classification à 6 classes) et, quand l'action prédite est `bet`/`raise`, une taille de mise via une deuxième tête de classification sur les 10 buckets déjà utilisés pour encoder les montants en entrée (`AI/train/vocab.py`, `AMOUNT_BUCKET_EDGES = [1, 2, 4, 7, 12, 20, 35, 60, 100]`). Pas de régression continue : classification sur buckets, plus stable et cohérent avec le reste du vocabulaire. `all_in` n'a pas de tête de sizing (le montant est implicitement tout le stack).
 
 | action | id |
 |---|---|
@@ -58,50 +68,70 @@ Le modèle V1 prédit uniquement le type d'action (classification à 6 classes) 
 | raise | 4 |
 | all_in | 5 |
 
+La loss de sizing n'est calculée que sur les lignes où `label.action` est `bet`/`raise` (masquée pour les autres), pondérée par `--amount-loss-weight` (défaut `1.0`) dans `train.py`.
+
 ## Pipeline PokerBench (baseline supervisé)
 
 Le service `betbot-agent` a `profiles: ["train"]` dans `docker-compose.yml` : il ne démarre jamais avec un simple `docker compose up`, il faut l'invoquer explicitement.
 
 ```bash
 # 1. Télécharger les 4 CSV officiels de RZ412/PokerBench
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/download_pokerbench.py \
   --output-dir /workspace/AI/Training/data/raw
 
 # 2. Convertir chaque CSV vers le JSONL standardisé (une commande par fichier)
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/pokerbench_to_json.py \
   /workspace/AI/Training/data/raw/preflop_60k_train_set_game_scenario_information.csv \
   /workspace/AI/Training/data/interim/preflop_train.jsonl preflop
 
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/pokerbench_to_json.py \
   /workspace/AI/Training/data/raw/preflop_1k_test_set_game_scenario_information.csv \
   /workspace/AI/Training/data/interim/preflop_test.jsonl preflop
 
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/pokerbench_to_json.py \
   /workspace/AI/Training/data/raw/postflop_500k_train_set_game_scenario_information.csv \
   /workspace/AI/Training/data/interim/postflop_train.jsonl postflop
 
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/pokerbench_to_json.py \
   /workspace/AI/Training/data/raw/postflop_10k_test_set_game_scenario_information.csv \
   /workspace/AI/Training/data/interim/postflop_test.jsonl postflop
 
 # 3. Split train/val (preflop+postflop unifiés) ; le split *_test officiel est conservé tel quel comme test set
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/split_dataset.py \
   --interim-dir /workspace/AI/Training/data/interim \
   --output-dir /workspace/AI/Training/data/processed \
   --val-fraction 0.1 --seed 42
 
 # 4. Entraîner (utilise la commande par défaut du service, ou surcharge les arguments)
-docker compose --profile train run --rm betbot-agent \
+sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/train/train.py --epochs 5 --batch-size 64
 ```
 
 Checkpoints écrits dans `AI/train/checkpoints/` (`last.pt` à chaque epoch, `best.pt` sur amélioration de la val accuracy). Chaque checkpoint embarque ses hyperparamètres et un snapshot du vocabulaire (`AI/train/vocab.py`), donc une future inférence peut le recharger sans dépendre du code d'entraînement.
+
+## Inférence (`AI/train/infer.py`)
+
+Script autonome : charge un checkpoint et fait tourner le modèle sur une seule main standardisée (JSON), affiche l'action prédite (+ ses probabilités) et, si l'action prédite est `bet`/`raise`, la tranche de taille prédite (`amount_bb_range`, `amount_bb_estimate` = milieu de la tranche).
+
+```bash
+# depuis un fichier
+python AI/train/infer.py --checkpoint AI/train/checkpoints/best.pt --input ma_main.json
+
+# depuis stdin
+head -1 AI/Training/data/processed/test.jsonl | python AI/train/infer.py --checkpoint AI/train/checkpoints/best.pt --input -
+
+# via docker
+docker compose --profile train run --rm betbot-agent \
+  python /workspace/AI/train/infer.py --checkpoint /workspace/AI/train/checkpoints/best.pt --input -
+```
+
+Le checkpoint embarque sa propre config et son propre snapshot de vocabulaire ; `infer.py` reste indépendant de `train.py`/de la boucle d'entraînement, et compare le snapshot du checkpoint au `vocab.py` courant pour avertir en cas de désynchronisation (ex. checkpoint entraîné avant l'ajout de la tête de sizing).
 
 ## GPU (AMD RX 7700 XT / ROCm)
 
