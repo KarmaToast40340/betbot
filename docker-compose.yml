@@ -9,6 +9,11 @@ services:
     network_mode: host
     volumes:
       - ./:/workspace
+      # Without this, every `docker compose down`+`up` re-downloads the
+      # model from scratch (log shows it saves to /home/paddleocr/.paddlex/
+      # regardless of `user: root` — the image sets HOME there). Persisting
+      # it host-side makes restarts near-instant after the first pull.
+      - ~/.cache/betbot-paddlex:/home/paddleocr/.paddlex
     command: >
       paddleocr genai_server
       --model_name PaddleOCR-VL-1.6-0.9B
@@ -38,6 +43,10 @@ services:
       FLAGS_use_mkldnn: "0"
       FLAGS_enable_onednn_fusion: "0"
       PADDLEOCR_VL_SERVER_URL: "http://127.0.0.1:8118/v1"
+      # Set to "1" to log the sampled Check-button RGB every tick while
+      # calibrating turn_detector.py; leave "0" once it's working (else it
+      # prints one line per second).
+      BETBOT_TURN_DEBUG: "${BETBOT_TURN_DEBUG:-0}"
     command: python /workspace/ScreenScraper/main.py
     restart: "no"
     depends_on:
@@ -80,3 +89,22 @@ services:
     command: python /workspace/AI/train/train.py
     restart: "no"
     profiles: ["train"]
+
+  agent-serve:
+    build:
+      context: .
+      dockerfile: Dockerfile.ia
+    container_name: betbot-agent-serve
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      PYTHONUNBUFFERED: "1"
+      BETBOT_DATA_DIR: "/workspace/data"
+      BETBOT_AI_DIR: "/workspace/AI"
+      BETBOT_HERO_NAME: "Karmatoast40"
+    # Single-record inference on this small model is instant on CPU (no
+    # GPU device passthrough needed here, unlike betbot-agent's training run).
+    command: python /workspace/AI/train/watch_and_infer.py --device cpu
+    restart: unless-stopped
+    profiles: ["serve"]

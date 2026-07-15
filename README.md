@@ -176,3 +176,22 @@ Test X11 dans le conteneur :
 ```bash
 sudo docker exec -it betbot-screenscraper bash -lc 'echo $DISPLAY; echo $XAUTHORITY; ls -l /root/.Xauthority; xrandr'
 ```
+
+
+```
+# 1. Tout arrêter proprement (au cas où d'anciens conteneurs tournent encore avec du vieux code)
+sudo docker compose --profile serve down
+
+# 2. Tout relancer en arrière-plan : paddleocr-vlm-server + screenscraper + agent-serve
+sudo docker compose --profile serve up -d
+
+# 3. Vérifier que les 3 tournent (pas de "Exited")
+sudo docker compose --profile serve ps
+
+# 4. Dans un terminal dédié : suivre uniquement les prédictions
+sudo docker compose --profile serve logs -f agent-serve
+```
+
+```
+sudo docker compose --profile serve exec agent-serve touch /workspace/data/output/start_serving.flag
+```

@@ -12,16 +12,29 @@ INPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 INPUT_PATH = INPUT_DIR / "capture_zone.png"
+TURN_BUTTON_DEBUG_PATH = INPUT_DIR / "turn_button_zone.png"
 STATE_LOG_PATH = OUTPUT_DIR / "poker_states.jsonl"
 LATEST_STATE_PATH = OUTPUT_DIR / "latest_state.json"
 RAW_OCR_PATH = OUTPUT_DIR / "latest_ocr.txt"
 DEBUG_OCR_PATH = OUTPUT_DIR / "latest_ocr_debug.json"
+TURN_SIGNAL_PATH = OUTPUT_DIR / "turn_signal.json"
 
 SERVER_URL = os.environ.get("PADDLEOCR_VL_SERVER_URL", "http://host.docker.internal:8118/v1")
 
 x1, y1 = 3745, 215
 x2, y2 = 3970, 821
 MONITOR = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
+
+# The Check button: bluish when it's not hero's turn, red when it is. Much
+# cheaper and more reliable than inferring "hero's turn" from the parsed
+# hand-history text (see ScreenScraper/turn_detector.py) — no OCR needed,
+# just a color sample. Coordinates found + refined via
+# ScreenScraper/misc/mouse_coords.py; user-measured red-state samples were
+# ~(219,80,80) and ~(229,53,53) (there's white text in the middle of the
+# button that dilutes the region average, but the red/blue gap survives it).
+bx1, by1 = 3096, 997
+bx2, by2 = 3186, 1026
+CHECK_BUTTON_ROI = {"left": bx1, "top": by1, "width": bx2 - bx1, "height": by2 - by1}
 
 STREETS = ["PRE-FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"]
 STRUCTURAL_MARKERS = {
@@ -51,7 +64,7 @@ CARD_LIKE_RE = re.compile(r"(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])?", 
 CARD_ONLY_LINE_RE = re.compile(r"^\s*(?:(?:10|[2-9AKQJT])(?:\s*[♥♦♣♠♡♢hdcs])?\s*){1,5}$", re.IGNORECASE)
 COMPACT_TWO_CARD_RE = re.compile(r"^\s*(10|[2-9AKQJT])\s*(10|[2-9AKQJT])\s*$", re.IGNORECASE)
 MADE_HAND_RE = re.compile(
-    r"\b(PAIR|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
+    r"\b(PAIRS?|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
     re.IGNORECASE,
 )
 SECTION_KEYWORD_RE = re.compile(r"\b(CARDS DEALT|PRE-FLOP|FLOP|TURN|RIVER|SHOWDOWN)\b", re.IGNORECASE)

@@ -446,7 +446,11 @@ def extract_text_from_result(json_path: Path, md_path: Path, source_image_path: 
     if markdown_text and not _is_poor_text(markdown_text):
         chosen = markdown_text
     elif json_text and not _is_poor_text(json_text):
-        chosen = markdown_text or json_text or NULL_TOKEN
+        # Reached only when markdown_text is missing/poor — must prefer the
+        # known-good json_text here. The previous `markdown_text or json_text`
+        # re-checked markdown_text first and picked it whenever merely
+        # non-empty, silently defeating the poor-quality check above.
+        chosen = json_text
     else:
         chosen = markdown_text or json_text or NULL_TOKEN
 

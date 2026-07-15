@@ -26,7 +26,12 @@ CARDS_DEALT_INLINE_RE = re.compile(r"^CARDS\s+DEALT\s*(.*)$", re.IGNORECASE)
 SHOWDOWN_INLINE_RE = re.compile(r"^SHOWDOWN\s+(.+)$", re.IGNORECASE)
 BOARD_LINE_RE = re.compile(r"^\s*(?:10|[2-9AKQJT])(?:\s+(?:10|[2-9AKQJT])){0,4}\s*$", re.IGNORECASE)
 MADE_HAND_RE = re.compile(
-    r"\b(PAIR|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
+    # PAIRS? (not just PAIR): Winamax renders two pair as "2 pairs: 9-4"
+    # (plural) — "\bPAIR\b" doesn't match "pairs" (the trailing "s" breaks
+    # the word boundary), so that line used to fall through the made-hand
+    # check entirely and get misparsed as hole cards by the generic
+    # card-extraction fallback below.
+    r"\b(PAIRS?|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
     re.IGNORECASE,
 )
 
@@ -76,6 +81,11 @@ def clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
     text = text.replace("♣", " ").replace("♠", " ").replace("♦", " ").replace("♥", " ")
     text = text.replace("♡", " ").replace("♢", " ")
+    # Stray decorative glyphs (e.g. arrows the OCR sometimes picks up around
+    # board-card recaps in the showdown section) — without this, a line like
+    # "8 ↓ J 9 9 4" fails the board-line regex (which only allows whitespace
+    # between ranks) and gets misclassified as a player name instead.
+    text = re.sub(r"[←-⇿]", " ", text)
     text = re.sub(r"&nbsp;", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"[ 	]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -244,6 +254,15 @@ def is_probable_player_name(line: str) -> bool:
     if ":" in line:
         return False
     if len(line) > 32:
+        return False
+    # Winamax nicknames are alphanumeric (+ underscore); reject anything
+    # containing punctuation like "()[]{}" — these are almost always OCR
+    # fragments (e.g. "(All-in)" split across lines and truncated to "in)"),
+    # which previously got accepted as a "player" and then matched by
+    # substring against any later line containing that fragment.
+    if re.search(r"[()\[\]{}]", line):
+        return False
+    if len(line) < 3:
         return False
     return bool(re.search(r"[A-Za-z]", line))
 
@@ -511,22 +530,6 @@ def reconcile_showdown_winner(actions: list[dict[str, Any]], showdown: dict[str,
     return actions
 
 
-def iter_action_matches(line):
-    # Ajout de "post small/big blind" au pattern
-    # On capture l'action, et on cherche le montant si présent
-    pattern = r"(?P<action>calls|raises|bets|folds|checks|post\s+small\s+blind|post\s+big\s+blind)(?:\s+(?:to|an)?\s*(?P<amount>[\d\.]+))?"
-    matches = list(re.finditer(pattern, line, re.IGNORECASE))
-    
-    results = []
-    for m in matches:
-        act = m.group("action").lower().replace(" ", "_")
-        data = {"action": act}
-        if m.group("amount"):
-            data["amount_bb"] = float(m.group("amount"))
-        results.append(data)
-    return results
-
-from collections import deque
 
 def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, **kwargs):
     actions = []
@@ -542,9 +545,17 @@ def parse_actions(lines, players, alias_map, hero_name=None, hero_cards=None, **
         upper = line_clean.upper()
 
         # 1. Mise à jour Street (ne pas toucher aux queues ici)
+        # Ordre important : "PRE-FLOP" contient "FLOP", donc il doit être
+        # vérifié avant. TURN/RIVER/SHOWDOWN étaient absents ici avant ce
+        # correctif : toute action après le flop restait taguée "flop" pour
+        # le reste de la main (et donc écrasait les vraies actions du flop
+        # lors de la fusion inter-captures dans main.py).
         if "PRE-FLOP" in upper or "CARDS DEALT" in upper: current_street = "preflop"; continue
+        if "SHOWDOWN" in upper: current_street = "showdown"; continue
+        if "RIVER" in upper: current_street = "river"; continue
+        if "TURN" in upper: current_street = "turn"; continue
         if "FLOP" in upper: current_street = "flop"; continue
-        
+
         # 2. Remplissage FIFO avec FILTRES STRICTS
         # Détection joueur : on ne prend QUE si c'est un nom valide dans ta liste
         found_name = next((name for name in player_names if name.lower() in line_clean.lower()), None)
