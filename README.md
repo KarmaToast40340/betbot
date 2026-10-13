@@ -1,18 +1,18 @@
-# README debug BetBot OCR / vLLM
+# BetBot OCR / vLLM Debug README
 
-Ce document résume les deux problèmes principaux rencontrés sur le projet BetBot : l'accès X11 depuis le conteneur `screenscraper` et l'erreur `max_tokens=4096` envoyée à vLLM par PaddleOCR-VL.[1][2]
+This document summarizes the two main issues encountered on the BetBot project: access to X11 from the `screenscraper` container and the `max_tokens=4096` error sent to vLLM by PaddleOCR-VL.
 
-## Problème X11
+## X11 issue
 
-Le symptôme typique était : `Authorization required, but no authorization protocol specified` suivi de `mss.exception.ScreenShotError: Unable to open display: b':0.0'`. Cela indique un problème d'autorisation X11, pas un problème OCR ni un bug `mss` pur.[3][4]
+The typical symptom was: `Authorization required, but no authorization protocol specified` followed by `mss.exception.ScreenShotError: Unable to open display: b':0.0'`. This indicates a problem with X11 authentication or DISPLAY configuration.
 
 ### Cause
 
-Le conteneur Docker avait accès au socket `/tmp/.X11-unix`, mais pas au cookie d'authentification X11, ou bien `DISPLAY` / `XAUTHORITY` n'étaient pas correctement passés. Les environnements lancés via `sudo` perdent souvent `XAUTHORITY`, ce qui casse l'accès au serveur X.[5][1]
+The Docker container had access to the `/tmp/.X11-unix` socket, but not to the X11 authentication cookie, or `DISPLAY` / `XAUTHORITY` were not passed correctly. This is common in Linux environments where GUI applications are launched inside containers.
 
-### Correction retenue
+### Fix applied
 
-Dans `docker-compose.yml`, la section `screenscraper` doit inclure :
+In `docker-compose.yml`, the `screenscraper` section must include:
 
 ```yaml
 screenscraper:
@@ -41,49 +41,49 @@ screenscraper:
     - paddleocr-vlm-server
 ```
 
-Le montage du socket X11, du fichier `.Xauthority`, et l'export explicite de `DISPLAY` sont une configuration standard pour faire tourner des applications GUI/X11 dans Docker.[1][6]
+Mounting the X11 socket, the `.Xauthority` file, and explicitly exporting `DISPLAY` is the standard setup for GUI/X11 applications inside Docker.[1][6]
 
-### Commandes utiles côté hôte
+### Useful host-side commands
 
-Avant relance, autoriser l'accès X11 :
+Before restarting, allow X11 access:
 
 ```bash
 xhost +si:localuser:root
 ```
 
-Ou en version plus large :
+Or in a broader form:
 
 ```bash
 xhost +local:
 ```
 
-Ces commandes donnent l'accès au serveur X aux processus locaux, dont le conteneur Docker, ce qui règle souvent l'erreur d'autorisation X11.[7][8]
+These commands grant local processes access to the X server, including Docker containers, which often resolves the X11 authorization error.[7][8]
 
-### Vérification
+### Verification
 
-Après relance :
+After restarting:
 
 ```bash
 sudo docker exec -it betbot-screenscraper bash -lc 'echo $DISPLAY; echo $XAUTHORITY; ls -l /root/.Xauthority; xrandr'
 ```
 
-Si `xrandr` fonctionne dans le conteneur, l'accès au display X11 est normalement rétabli.[1][6]
+If `xrandr` works inside the container, the X11 display access is usually restored.[1][6]
 
-## Problème vLLM / max_tokens
+## vLLM / max_tokens issue
 
-Le symptôme était une erreur 400 depuis le backend vLLM : `max_tokens or max_completion_tokens is too large: 4096`, avec un message indiquant que le modèle a un `maximum context length` de 2048 ou 4096 selon la configuration du serveur.[2][9]
+The symptom was a 400 error from the vLLM backend: `max_tokens or max_completion_tokens is too large: 4096`, with a message indicating that the model has a `maximum context length` of 2048.
 
 ### Cause
 
-Le problème ne venait pas directement de la config YAML vLLM (`max-model-len`, `gpu-memory-utilization`, etc.), mais d'une valeur par défaut dans PaddleX. Le code local contenait `vlm_kwargs["max_new_tokens"] = 4096` dans `paddlex/inference/pipelines/paddleocr_vl/pipeline.py`, puis cette valeur était convertie en `max_tokens` ou `max_completion_tokens` avant l'appel au serveur vLLM.[9][10]
+The problem was not directly due to the vLLM YAML configuration (`max-model-len`, `gpu-memory-utilization`, etc.), but to a default value in PaddleX. The local code contained `vlm_kwargs["max_new_tokens"] = 4096`.
 
-### Pourquoi 4096 était un problème
+### Why 4096 was a problem
 
-Dans vLLM, la règle est : `tokens d'entrée + tokens générés <= max_model_len`. Donc avec `max_model_len=2048`, une requête qui demande `max_tokens=4096` est toujours invalide. Même avec `max_model_len=4096`, `max_tokens=4096` reste invalide dès qu'il y a le moindre token d'entrée.[9][11]
+In vLLM, the rule is: `input tokens + generated tokens <= max_model_len`. So with `max_model_len=2048`, a request asking for `max_tokens=4096` is always invalid. Even if `max_model_len` is increased, the request remains invalid if the sum exceeds the context window.
 
-### Lignes trouvées
+### Relevant lines found
 
-Les recherches dans le venv local ont montré les points importants suivants :
+Searching the local venv showed the following key locations:
 
 ```text
 /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddlex/inference/models/doc_vlm/predictor.py:514:            request_kwargs[max_tokens_name] = max_new_tokens
@@ -91,11 +91,11 @@ Les recherches dans le venv local ont montré les points importants suivants :
 /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddlex/inference/pipelines/paddleocr_vl/pipeline.py:505:            vlm_kwargs["max_new_tokens"] = 4096
 ```
 
-Ces lignes montrent que `pipeline.py` fixe 4096, puis `predictor.py` envoie cette valeur au backend OpenAI-compatible de vLLM.[9][10]
+These lines show that `pipeline.py` sets 4096, and then `predictor.py` sends that value to the OpenAI-compatible vLLM backend.[9][10]
 
-### Correction retenue
+### Fix applied
 
-Patch local du fichier :
+Local patch of the file:
 
 ```bash
 python - <<'PY'
@@ -109,25 +109,25 @@ print("ok")
 PY
 ```
 
-Cette correction force une génération courte et cohérente avec un usage OCR poker, au lieu de demander toute la fenêtre de contexte en sortie.[9][10]
+This forces a shorter generation aligned with poker OCR usage instead of asking the model to generate the whole context window.[9][10]
 
-### Vérification après patch
+### Verification after the patch
 
 ```bash
 grep -n "max_new_tokens" /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddlex/inference/pipelines/paddleocr_vl/pipeline.py
 ```
 
-La sortie attendue doit montrer :
+The expected output should be:
 
 ```python
 vlm_kwargs["max_new_tokens"] = 256
 ```
 
-Une petite valeur comme 256 ou 512 est bien plus adaptée à l'extraction OCR que 4096.[9][10]
+A smaller value such as 256 or 512 is far more suitable for OCR extraction than 4096.[9][10]
 
-## Configuration vLLM testée
+## Tested vLLM configuration
 
-Configuration côté serveur utilisée pendant le debug :
+Server-side configuration used during debugging:
 
 ```yaml
 gpu-memory-utilization: 0.6
@@ -136,17 +136,17 @@ max-num-batched-tokens: 1024
 max-num-seqs: 1
 ```
 
-Cette configuration réduit la pression mémoire et le KV cache, mais elle ne résout pas à elle seule un `max_tokens=4096` envoyé par le client PaddleOCR-VL.[12][13]
+This reduces memory pressure and KV cache usage, but it does not by itself solve a `max_tokens=4096` request sent by the PaddleOCR-VL client.[12][13]
 
-## Ce qu'il faut retenir
+## Takeaways
 
-- Le problème X11 est un problème de socket/cookie/authentification, corrigé via `DISPLAY`, `XAUTHORITY`, montage `.Xauthority` et `xhost`.[4][1]
-- Le problème `max_tokens=4096` vient d'un défaut PaddleX local, pas directement de `max-model-len` dans la config vLLM.[9][10]
-- Augmenter `max_model_len` sans corriger `max_new_tokens` ne suffit pas, car vLLM vérifie toujours que `input + output` tienne dans la fenêtre totale.[9][11]
+- The X11 issue is a socket/authentication problem and is fixed via `DISPLAY`, `XAUTHORITY`, `.Xauthority` mounting, and `xhost`.[4][1]
+- The `max_tokens=4096` problem comes from a local PaddleX bug, not directly from `max-model-len` in the vLLM config.[9][10]
+- Increasing `max_model_len` alone is not enough; `max_new_tokens` must also be corrected because vLLM always validates that `input + output` fits inside the total context window.[9][11]
 
-## Commandes de rappel
+## Quick commands
 
-Recherche des chemins Python :
+Find the Python paths:
 
 ```bash
 python - <<'PY'
@@ -157,41 +157,41 @@ print("paddlex   =", os.path.dirname(paddlex.__file__))
 PY
 ```
 
-Recherche de la valeur fautive :
+Search for the bad value:
 
 ```bash
 grep -Rni "max_tokens" /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddleocr /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddlex
 grep -Rni "4096" /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddleocr /home/karma/Documents/betbot/env/lib/python3.12/site-packages/paddlex
 ```
 
-Relance Docker :
+Restart Docker:
 
 ```bash
 sudo -E docker compose down
 sudo -E docker compose up --build -d
 ```
 
-Test X11 dans le conteneur :
+Test X11 inside the container:
 
 ```bash
 sudo docker exec -it betbot-screenscraper bash -lc 'echo $DISPLAY; echo $XAUTHORITY; ls -l /root/.Xauthority; xrandr'
 ```
 
-
 ```
-# 1. Tout arrêter proprement (au cas où d'anciens conteneurs tournent encore avec du vieux code)
+# 1. Stop everything cleanly (in case old containers are still running with stale code)
 sudo docker compose --profile serve down
 
-# 2. Tout relancer en arrière-plan : paddleocr-vlm-server + screenscraper + agent-serve
+# 2. Restart everything in the background: paddleocr-vlm-server + screenscraper + agent-serve
 sudo docker compose --profile serve up -d
 
-# 3. Vérifier que les 3 tournent (pas de "Exited")
+# 3. Check that all 3 are running (not "Exited")
 sudo docker compose --profile serve ps
 
-# 4. Dans un terminal dédié : suivre uniquement les prédictions
+# 4. In a dedicated terminal, follow only the predictions
 sudo docker compose --profile serve logs -f agent-serve
 ```
 
 ```
 sudo docker compose --profile serve exec agent-serve touch /workspace/data/output/start_serving.flag
 ```
+

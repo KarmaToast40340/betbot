@@ -1,27 +1,27 @@
-# Poker OCR modulaire
+# Modular Poker OCR
 
-Fichiers :
-- `config.py` : chemins, zone de capture, regex, config serveur
-- `capture.py` : capture écran de la zone poker
-- `parser.py` : transforme le texte OCR en état poker structuré
-- `ocr_engine.py` : appel PaddleOCR-VL + sauvegarde JSON/Markdown
-- `state_manager.py` : fingerprint image + signature d'état + JSONL
-- `main.py` : boucle continue de monitoring
+Files:
+- `config.py`: paths, capture area, regexes, server config
+- `capture.py`: screen capture of the poker table area
+- `parser.py`: transforms OCR text into a structured poker state
+- `ocr_engine.py`: calls PaddleOCR-VL and saves JSON/Markdown output
+- `state_manager.py`: image fingerprint, state signature, and JSONL logging
+- `main.py`: continuous monitoring loop
 
-## Lancement
+## Launch
 
 ```bash
 python main.py
 ```
 
-## Dépendances
+## Dependencies
 
 - `paddleocr`
 - `opencv-python`
 - `mss`
-- serveur PaddleOCR-VL accessible via `PADDLEOCR_VL_SERVER_URL`
+- PaddleOCR-VL server available via `PADDLEOCR_VL_SERVER_URL`
 
-## Sorties
+## Output
 
 - `data/input/capture_zone.png`
 - `data/output/latest_ocr.txt`
@@ -29,3 +29,4 @@ python main.py
 - `data/output/poker_states.jsonl`
 - `data/output/ocr_vl_000.json`
 - `data/output/ocr_vl_000.md`
+

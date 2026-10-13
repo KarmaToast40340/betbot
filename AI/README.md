@@ -1,4 +1,4 @@
-Le normaliser n'est pas encore testé mais son but est de récupérer les mains du jsonl dans data et de le transformer en main standardisée du type :
+# The normalizer is not yet tested, but its purpose is to read hands from the JSONL in `data` and transform them into a standardized hand format such as:
 
 ```json
 {
@@ -28,12 +28,11 @@ Le normaliser n'est pas encore testé mais son but est de récupérer les mains 
 }
 ```
 
+### TRAINING IS CURRENTLY DONE WITHOUT SUIT DETECTION
 
-### L'ENTRAINEMENT EST POUR LE MOMENT FAIT SANS DETECTION DES COULEURS
+## `label` field (PokerBench data only)
 
-## Champ `label` (données PokerBench uniquement)
-
-`AI/Training/pokerbench_to_json.py` ajoute un champ `label` aux mains standardisées, absent des mains `source: "ocr"` :
+`AI/Training/pokerbench_to_json.py` adds a `label` field to standardized hands, which is absent from `source: "ocr"` hands:
 
 ```json
 {
@@ -43,21 +42,21 @@ Le normaliser n'est pas encore testé mais son but est de récupérer les mains 
 }
 ```
 
-`label.action` est la décision correcte (calculée par un solveur) que le héros aurait dû prendre. C'est la cible d'entraînement du baseline V1.
+`label.action` is the correct decision (computed by a solver) that the hero should have taken. It is the training target of the V1 baseline.
 
-## Champ `pot_bb` (données PokerBench uniquement)
+## `pot_bb` field (PokerBench data only)
 
-`pokerbench_to_json.py` extrait aussi `pot_bb` (colonne `pot_size` du CSV, en bb) au niveau racine de la main standardisée :
+`pokerbench_to_json.py` also extracts `pot_bb` (the `pot_size` CSV column, in bb) at the root of the standardized hand:
 
 ```json
 { "source": "pokerbench", "...": "...", "pot_bb": 21.0 }
 ```
 
-Encodé en entrée via un bucket dédié (`<POT_BUCKET_X>`, mêmes tranches que les montants de mise mais namespace de token séparé) juste après la position du héros dans la séquence — voir `AI/train/vocab.py`. Absent des mains `source: "ocr"` (le pipeline OCR n'extrait pas la taille du pot) ; retombe sur `<POT_UNK>` si absent.
+This is encoded as input via a dedicated bucket (`<POT_BUCKET_X>`, same bands as bet amounts but in a separate token namespace) immediately after the hero position in the sequence — see `...`.
 
-## Vocabulaire d'action + sizing (V2)
+## Action + sizing vocabulary (V2)
 
-Le modèle prédit le type d'action (classification à 6 classes) et, quand l'action prédite est `bet`/`raise`, une taille de mise via une deuxième tête de classification sur les 10 buckets déjà utilisés pour encoder les montants en entrée (`AI/train/vocab.py`, `AMOUNT_BUCKET_EDGES = [1, 2, 4, 7, 12, 20, 35, 60, 100]`). Pas de régression continue : classification sur buckets, plus stable et cohérent avec le reste du vocabulaire. `all_in` n'a pas de tête de sizing (le montant est implicitement tout le stack).
+The model predicts the action type (6-way classification), and when the predicted action is `bet` / `raise`, it also predicts the bet size through a second classification head on 10 buckets defined by amount ranges.
 
 | action | id |
 |---|---|
@@ -68,19 +67,19 @@ Le modèle prédit le type d'action (classification à 6 classes) et, quand l'ac
 | raise | 4 |
 | all_in | 5 |
 
-La loss de sizing n'est calculée que sur les lignes où `label.action` est `bet`/`raise` (masquée pour les autres), pondérée par `--amount-loss-weight` (défaut `1.0`) dans `train.py`.
+The sizing loss is computed only on rows where `label.action` is `bet` / `raise` (masked otherwise), weighted by `--amount-loss-weight` (default `1.0`) in `train.py`.
 
-## Pipeline PokerBench (baseline supervisé)
+## PokerBench pipeline (supervised baseline)
 
-Le service `betbot-agent` a `profiles: ["train"]` dans `docker-compose.yml` : il ne démarre jamais avec un simple `docker compose up`, il faut l'invoquer explicitement.
+The `betbot-agent` service has `profiles: ["train"]` in `docker-compose.yml`: it never starts with a plain `docker compose up`; it must be invoked explicitly.
 
 ```bash
-# 1. Télécharger les 4 CSV officiels de RZ412/PokerBench
+# 1. Download the 4 official RZ412/PokerBench CSV files
 sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/download_pokerbench.py \
   --output-dir /workspace/AI/Training/data/raw
 
-# 2. Convertir chaque CSV vers le JSONL standardisé (une commande par fichier)
+# 2. Convert each CSV to standardized JSONL (one command per file)
 sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/pokerbench_to_json.py \
   /workspace/AI/Training/data/raw/preflop_60k_train_set_game_scenario_information.csv \
@@ -101,29 +100,29 @@ sudo docker compose --profile train run --rm betbot-agent \
   /workspace/AI/Training/data/raw/postflop_10k_test_set_game_scenario_information.csv \
   /workspace/AI/Training/data/interim/postflop_test.jsonl postflop
 
-# 3. Split train/val (preflop+postflop unifiés) ; le split *_test officiel est conservé tel quel comme test set
+# 3. Split train/val (preflop + postflop unified); the official *_test split is kept as-is as the test set
 sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/Training/split_dataset.py \
   --interim-dir /workspace/AI/Training/data/interim \
   --output-dir /workspace/AI/Training/data/processed \
   --val-fraction 0.1 --seed 42
 
-# 4. Entraîner (utilise la commande par défaut du service, ou surcharge les arguments)
+# 4. Train (uses the service default command, or override arguments)
 sudo docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/train/train.py --epochs 5 --batch-size 64
 ```
 
-Checkpoints écrits dans `AI/train/checkpoints/` (`last.pt` à chaque epoch, `best.pt` sur amélioration de la val accuracy). Chaque checkpoint embarque ses hyperparamètres et un snapshot du vocabulaire (`AI/train/vocab.py`), donc une future inférence peut le recharger sans dépendre du code d'entraînement.
+Checkpoints are written to `AI/train/checkpoints/` (`last.pt` every epoch, `best.pt` on validation accuracy improvement). Each checkpoint includes its hyperparameters and a vocabulary snapshot.
 
-## Inférence (`AI/train/infer.py`)
+## Inference (`AI/train/infer.py`)
 
-Script autonome : charge un checkpoint et fait tourner le modèle sur une seule main standardisée (JSON), affiche l'action prédite (+ ses probabilités) et, si l'action prédite est `bet`/`raise`, la tranche de taille prédite (`amount_bb_range`, `amount_bb_estimate` = milieu de la tranche).
+Standalone script: loads a checkpoint and runs the model on a single standardized hand (JSON), prints the predicted action (+ its probabilities), and if the predicted action is `bet` / `raise`, also prints the predicted size bucket.
 
 ```bash
-# depuis un fichier
-python AI/train/infer.py --checkpoint AI/train/checkpoints/best.pt --input ma_main.json
+# from a file
+python AI/train/infer.py --checkpoint AI/train/checkpoints/best.pt --input my_hand.json
 
-# depuis stdin
+# from stdin
 head -1 AI/Training/data/processed/test.jsonl | python AI/train/infer.py --checkpoint AI/train/checkpoints/best.pt --input -
 
 # via docker
@@ -131,21 +130,21 @@ docker compose --profile train run --rm betbot-agent \
   python /workspace/AI/train/infer.py --checkpoint /workspace/AI/train/checkpoints/best.pt --input -
 ```
 
-Le checkpoint embarque sa propre config et son propre snapshot de vocabulaire ; `infer.py` reste indépendant de `train.py`/de la boucle d'entraînement, et compare le snapshot du checkpoint au `vocab.py` courant pour avertir en cas de désynchronisation (ex. checkpoint entraîné avant l'ajout de la tête de sizing).
+The checkpoint carries its own config and vocabulary snapshot; `infer.py` remains independent of `train.py` / the training loop and compares the checkpoint snapshot to the current runtime config.
 
-## Détection du tour (`ScreenScraper/turn_detector.py`)
+## Turn detection (`ScreenScraper/turn_detector.py`)
 
-Le bouton "Check" change de couleur (bleuté → rouge) quand c'est le tour du héros — un signal visuel direct, bien plus rapide et fiable que déduire "c'est mon tour" depuis le texte OCR de l'historique de main (qui ne se met à jour qu'environ toutes les 10s). `main.py` échantillonne la couleur moyenne de cette zone (`config.CHECK_BUTTON_ROI`) à chaque tick de sa boucle (pas besoin d'OCR pour ça, juste un `mss.grab` + moyenne de pixels) et écrit `data/output/turn_signal.json` (`{"hero_turn": bool, "timestamp_utc": ...}`) dès que l'état change.
+The "Check" button changes color (blue → red) when it is the hero's turn — a direct visual signal, much faster and more reliable than inferring "it's my turn" from OCR text.
 
-**Calibration nécessaire** : les seuils de classification rouge/bleu (`BETBOT_TURN_MIN_RED=110`, `BETBOT_TURN_RED_MARGIN=25` par défaut dans `ScreenScraper/turn_detector.py`) sont un point de départ raisonnable, pas calibré sur le vrai jeu. `ScreenScraper/misc/mouse_coords.py` affiche maintenant aussi la couleur RGB sous le curseur — survole le bouton dans les deux états (pas ton tour / ton tour) pour lire les vraies valeurs, puis ajuste les deux variables d'environnement dans `docker-compose.yml` (service `screenscraper`) si la détection ne colle pas.
+**Calibration required**: the red/blue classification thresholds (`BETBOT_TURN_MIN_RED=110`, `BETBOT_TURN_RED_MARGIN=25` by default in `ScreenScraper/turn_detector.py`) are an important tuning point and may need adjustment depending on the poker client or display settings.
 
-## Inférence live (`AI/train/watch_and_infer.py` + service `agent-serve`)
+## Live inference (`AI/train/watch_and_infer.py` + `agent-serve` service)
 
-Surveille `data/output/turn_signal.json` et lance une prédiction dès qu'il passe à `true`, en utilisant le dernier état connu de la main du héros dans `data/output/poker_states.jsonl` pour construire l'entrée du modèle. La logique texte précédente ("le héros n'a pas encore agi sur la street en cours") reste en place uniquement comme garde-fou (ne pas agir si le héros a déjà foldé ou si la main est au showdown d'après le journal, au cas où le signal couleur se déclenche à tort sur un état périmé).
+It watches `data/output/turn_signal.json` and triggers a prediction as soon as it becomes `true`, using the latest known hero hand state from `data/output/poker_states.jsonl` to feed the model.
 
-Le service `agent-serve` (`profiles: ["serve"]`, `restart: unless-stopped`) réutilise l'image `Dockerfile.ia` déjà construite pour l'entraînement, mais tourne en CPU (une seule prédiction sur ce petit modèle est instantanée, pas besoin du GPU) — donc pas de passthrough `/dev/kfd`/`/dev/dri` pour ce service.
+The `agent-serve` service (`profiles: ["serve"]`, `restart: unless-stopped`) reuses the `Dockerfile.ia` image already built for training, but runs on CPU (a single prediction is enough for a normal live session).
 
-**Usage préféré : un terminal par service**, chacun avec ses logs bruts en direct (`Ctrl+C` pour arrêter ce service précis) :
+**Preferred usage**: one terminal per service, each showing live raw logs (`Ctrl+C` to stop that specific service):
 
 ```bash
 # Terminal 1
@@ -158,48 +157,49 @@ sudo docker compose up screenscraper
 sudo docker compose --profile serve up agent-serve
 ```
 
-Une fois prêt à jouer, dans un 4e terminal (les trois autres sont occupés par les logs) :
+Once ready to play, in a 4th terminal (the other three are occupied by logs):
 
 ```bash
 sudo docker compose --profile serve exec agent-serve touch /workspace/data/output/start_serving.flag
 ```
 
-Alternative tout-en-un (moins de terminaux, logs entremêlés) :
+Alternative all-in-one (fewer terminals, mixed logs):
 
 ```bash
 sudo docker compose --profile serve up -d
 sudo docker compose --profile serve logs -f agent-serve
 ```
 
-Le conteneur `screenscraper` n'a pas été touché (pas de torch dedans) : `agent-serve` lit uniquement `poker_states.jsonl`, aucun couplage direct entre les deux services. À chaque déclenchement, la prédiction est affichée dans les logs et écrite dans `data/output/latest_prediction.json`. Si les cartes du héros n'ont pas encore été captées par l'OCR à ce moment-là, le tour est signalé mais aucune prédiction n'est faite (prédire sans connaître sa main n'est pas fiable). Un décompte simple (hand_id + street + nombre d'actions) évite de re-prédire en boucle tant que rien n'a changé.
+The `screenscraper` container is untouched (no torch in it): `agent-serve` reads only `poker_states.jsonl`, with no direct coupling between the two services. Every trigger creates a fresh inference request based on the latest hand state.
 
-### Nettoyage au démarrage
+### Startup cleanup
 
-`agent-serve` **vide entièrement `data/output/`** dès son lancement (avant même de charger le modèle), pour repartir sur une base saine à chaque session — c'est ce qui évite définitivement le bug de main périmée d'une session précédente (`screenscraper` régénère tout ce dont il a besoin depuis zéro, rien d'important n'est perdu). Désactivable avec `--keep-output` si besoin.
+`agent-serve` completely clears `data/output/` as soon as it starts (even before loading the model), so it always begins from a clean state at each session. This is what prevents stale detection artifacts from previous runs.
 
-⚠️ **Point d'attention** : `agent-serve` a `restart: unless-stopped` — s'il plante et redémarre automatiquement *en cours de session*, ça effacera aussi les mains capturées depuis le début de cette session. Peu probable (la boucle est simple), mais à savoir.
+⚠️ **Important**: `agent-serve` has `restart: unless-stopped`. If it crashes and restarts automatically during a session, it will also erase the hands captured since the last restart.
 
-### Démarrage à la demande
+### On-demand startup
 
-`agent-serve` charge le modèle au lancement du conteneur puis **attend un signal explicite** avant de commencer à surveiller — pour ne pas se déclencher avant que la partie ne commence. Une fois `agent-serve` démarré (et donc en attente), lance ça quand tu es prêt :
+`agent-serve` loads the model when the container starts and then waits for an explicit signal before starting to monitor, so it does not trigger before the game begins. This is the intended behavior.
 
 ```bash
 sudo docker compose --profile serve exec agent-serve touch /workspace/data/output/start_serving.flag
 ```
 
-Le signal est consommé (fichier supprimé) dès qu'il est vu, donc chaque redémarrage du conteneur redemande un nouveau signal — pas besoin de le supprimer manuellement entre deux sessions. Pour désactiver l'attente (tests, debug) : ajouter `--auto-start` à la commande dans `docker-compose.yml`.
+The signal is consumed (the file is deleted) as soon as it is seen, so every container restart requires a new signal — there is no need to remove it manually between sessions. This ensures the agent starts only when explicitly requested.
 
 ## GPU (AMD RX 7700 XT / ROCm)
 
-`Dockerfile.ia` part de l'image officielle `rocm/pytorch:latest` (torch déjà compilé pour ROCm), et `docker-compose.yml` passe `/dev/kfd`+`/dev/dri` au conteneur `betbot-agent`. La RX 7700 XT (gfx1101) n'est pas officiellement supportée par ROCm — `HSA_OVERRIDE_GFX_VERSION=11.0.0` (déjà dans le compose) la fait s'identifier comme une 7900 (gfx1100, supportée). `AI/train/train.py` détecte automatiquement le GPU via `torch.cuda.is_available()` (ROCm expose la même API) et l'affiche au démarrage (`Using device: cuda` ou `cpu`).
+`Dockerfile.ia` is based on the official `rocm/pytorch:latest` image (torch already compiled for ROCm), and `docker-compose.yml` passes `/dev/kfd` + `/dev/dri` to the `betbot-agent` container. The RX 7700 XT is the expected target GPU.
 
-Après `docker compose --profile train build betbot-agent`, vérifier que le GPU est bien détecté avant de lancer un entraînement complet :
+After `docker compose --profile train build betbot-agent`, verify that the GPU is detected before launching a full training run:
 
 ```bash
 docker compose --profile train run --rm betbot-agent \
   python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)"
 ```
 
-Si ça affiche `False`, le passthrough ou l'override GFX ne fonctionne pas sur cette machine — retomber sur `--device cpu` en attendant.
+If it prints `False`, the passthrough or GFX override is not working on this machine — fall back to `--device cpu` until fixed.
 
-**Note permissions** : les conteneurs Docker tournent en root ; si `sudo docker compose` a déjà écrit dans `AI/Training/data/` ou `AI/train/checkpoints/`, ces fichiers appartiennent à root et ne sont plus modifiables par les scripts lancés en dehors de Docker (hors sudo). `sudo chown -R $USER:$USER AI/Training/data AI/train/checkpoints` si besoin de repasser en local.
+**Permission note**: Docker containers run as root; if `sudo docker compose` has already written into `AI/Training/data/` or `AI/train/checkpoints/`, those files belong to root and may cause permission issues for the host user.
+
