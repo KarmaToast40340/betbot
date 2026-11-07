@@ -5,9 +5,9 @@ from datetime import datetime
 from pathlib import Path
 
 from capture import capture_region_to_png
-from config import INPUT_PATH, MONITOR, OUTPUT_DIR, STATE_LOG_PATH, TURN_SIGNAL_PATH
+from config import INPUT_PATH, MONITOR, OUTPUT_DIR, STATE_LOG_PATH, TURN_SIGNAL_PATH, ensure_dirs
 from ocr_engine import run_ocr
-from parser import parse_ocr_document
+from parser import parse_ocr_document, utc_now_iso
 from turn_detector import is_hero_turn
 
 # Définition de l'ordre des streets pour la progression
@@ -110,10 +110,11 @@ def upsert_states_preserve_history(path: Path, new_states):
     write_jsonl(path, rows)
 
 def write_turn_signal(hero_turn: bool):
-    payload = {"hero_turn": hero_turn, "timestamp_utc": datetime.utcnow().isoformat() + "Z"}
+    payload = {"hero_turn": hero_turn, "timestamp_utc": utc_now_iso()}
     TURN_SIGNAL_PATH.write_text(json.dumps(payload), encoding="utf-8")
 
 def monitor_loop(interval_sec=1.0):
+    ensure_dirs()
     print(f"Monitoring: {MONITOR}")
     last_image_hash = None
     last_hero_turn = None

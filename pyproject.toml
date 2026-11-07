@@ -1,0 +1,25 @@
+[project]
+name = "betbot"
+version = "0.1.0"
+description = "Poker table OCR (PaddleOCR-VL) + Transformer decision model"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The code is organised as script folders, not installable packages: expose
+# them on sys.path the same way the Docker entrypoints do. AI/train comes
+# before AI so that `import train` resolves to train.py, not the folder.
+pythonpath = ["ScreenScraper", "AI/train", "AI/Training", "AI"]
+addopts = "-ra"
+markers = [
+    "gpu: needs PaddleOCR-VL / a GPU / the vLLM server (skipped in CI)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["env", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]

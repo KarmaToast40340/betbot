@@ -1,21 +1,10 @@
 #!/usr/bin/env python3
 """PyTorch Dataset/DataLoader for standardized+labeled PokerBench JSONL records."""
-import json
-
 import torch
 from torch.utils.data import DataLoader, Dataset
 
 import vocab
-
-
-def load_jsonl(path):
-    records = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    return records
+from jsonl_io import load_jsonl
 
 
 class PokerBenchDataset(Dataset):

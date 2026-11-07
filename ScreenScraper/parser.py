@@ -1,13 +1,14 @@
+import os
 import re
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from config import STREETS, STRUCTURAL_MARKERS
+from config import CARD_RANK_RE, MADE_HAND_RE, STREETS, STRUCTURAL_MARKERS
 
-HERO_NAME = "Karmatoast40"
+HERO_NAME = os.environ.get("BETBOT_HERO_NAME", "Karmatoast40")
 STREET_NAMES = set(STREETS)
 NON_ACTION_EVENTS = {
     "cards_dealt",
@@ -18,22 +19,18 @@ NON_ACTION_EVENTS = {
     "hero_cards",
 }
 
+
+def utc_now_iso() -> str:
+    """UTC timestamp in the historical format, e.g. 2026-11-07T10:00:00.123456Z."""
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+
+
 HAND_LINE_RE = re.compile(r"^\s*Hand\s+(.+)$", re.IGNORECASE)
 AMOUNT_BB_RE = re.compile(r"\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?", re.IGNORECASE)
-CARD_RANK_RE = re.compile(r"\b(10|[2-9AKQJT])\b", re.IGNORECASE)
 COMPACT_CARD_SEQ_RE = re.compile(r"(?<![A-Za-z0-9])((?:10|[2-9AKQJT]){2,5})(?![A-Za-z0-9])", re.IGNORECASE)
 CARDS_DEALT_INLINE_RE = re.compile(r"^CARDS\s+DEALT\s*(.*)$", re.IGNORECASE)
 SHOWDOWN_INLINE_RE = re.compile(r"^SHOWDOWN\s+(.+)$", re.IGNORECASE)
 BOARD_LINE_RE = re.compile(r"^\s*(?:10|[2-9AKQJT])(?:\s+(?:10|[2-9AKQJT])){0,4}\s*$", re.IGNORECASE)
-MADE_HAND_RE = re.compile(
-    # PAIRS? (not just PAIR): Winamax renders two pair as "2 pairs: 9-4"
-    # (plural) — "\bPAIR\b" doesn't match "pairs" (the trailing "s" breaks
-    # the word boundary), so that line used to fall through the made-hand
-    # check entirely and get misparsed as hole cards by the generic
-    # card-extraction fallback below.
-    r"\b(PAIRS?|TWO PAIR|TRIPS|THREE OF A KIND|STRAIGHT|FLUSH|FULL HOUSE|QUADS|FOUR OF A KIND|STRAIGHT FLUSH)\b",
-    re.IGNORECASE,
-)
 
 ACTION_PATTERNS = [
     ("post_small_blind", re.compile(r"\bPost\s+small\s+blind(?:\s*\(?\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*\)?)?", re.IGNORECASE)),
@@ -752,7 +749,7 @@ def parse_poker_ocr_text(raw_text: str, image_path: Path) -> dict[str, Any]:
         showdown=showdown,
     )
     state = {
-        "timestamp_utc": datetime.utcnow().isoformat() + "Z",
+        "timestamp_utc": utc_now_iso(),
         "source_image": image_path.name,
         "hand_id": parse_hand_id(lines),
         "blinds": parse_blinds(raw_text),

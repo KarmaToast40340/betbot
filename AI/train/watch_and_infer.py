@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import normalizer  # noqa: E402
 
 from infer import load_model, predict  # noqa: E402
+from jsonl_io import load_jsonl  # noqa: E402
 
 AI_DIR = os.environ.get("BETBOT_AI_DIR", "AI")
 DATA_DIR = os.environ.get("BETBOT_DATA_DIR", os.path.join(AI_DIR, "..", "data"))
@@ -89,7 +90,7 @@ def wait_for_start_signal(path, poll_interval):
     if os.path.exists(path):
         os.remove(path)
         return
-    print(f"Waiting for start signal — run this when you're ready to begin watching:")
+    print("Waiting for start signal — run this when you're ready to begin watching:")
     print(f"  docker compose --profile serve exec agent-serve touch {path}")
     while not os.path.exists(path):
         time.sleep(poll_interval)
@@ -98,18 +99,6 @@ def wait_for_start_signal(path, poll_interval):
     except FileNotFoundError:
         pass
     print("Start signal received, watching now.")
-
-
-def load_jsonl(path):
-    if not os.path.exists(path):
-        return []
-    rows = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
-    return rows
 
 
 def load_turn_signal(path):
@@ -170,7 +159,7 @@ def main():
     while True:
         turn_signal = load_turn_signal(args.turn_signal_path)
         if turn_signal.get("hero_turn"):
-            states = load_jsonl(args.state_log)
+            states = load_jsonl(args.state_log, missing_ok=True)
             active = find_latest_hand(states, args.hero_name)
 
             if active is not None and not hero_already_out(active, args.hero_name):

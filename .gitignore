@@ -60,7 +60,12 @@ runs/
 
 # Data Files (Large)
 *.csv
-*.json  # Be careful with this
+# Note: git has no end-of-line comments, the previous
+# "*.json  # Be careful with this" line was a literal pattern that matched nothing.
+*.json
+# ...but keep test fixtures and the committed anchor calibration
+!tests/**/*.json
+!anchor_probe_output.json
 *.parquet
 data/
 datasets/

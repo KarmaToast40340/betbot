@@ -4,16 +4,30 @@ from pathlib import Path
 from typing import Iterable
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
-from paddleocr import PaddleOCRVL
 
 from config import DEBUG_OCR_PATH, RAW_OCR_PATH, SERVER_URL
 
-pipeline = PaddleOCRVL(
-    vl_rec_backend="vllm-server",
-    vl_rec_server_url=SERVER_URL,
-    use_ocr_for_image_block=True,
-    format_block_content=True,
-)
+_pipeline = None
+
+
+def get_pipeline():
+    """Build the PaddleOCR-VL client on first use.
+
+    Creating it at import time made this module impossible to import (and so
+    its pure image/text helpers impossible to test) without paddleocr
+    installed and the vLLM server reachable.
+    """
+    global _pipeline
+    if _pipeline is None:
+        from paddleocr import PaddleOCRVL
+
+        _pipeline = PaddleOCRVL(
+            vl_rec_backend="vllm-server",
+            vl_rec_server_url=SERVER_URL,
+            use_ocr_for_image_block=True,
+            format_block_content=True,
+        )
+    return _pipeline
 
 NULL_TOKEN = "NULL"
 MIN_LOGICAL_LINES = 3
@@ -265,7 +279,7 @@ def _learn_offset_and_size(paired: list[dict]):
 
 def _safe_predict(path: Path):
     try:
-        return pipeline.predict(str(path))
+        return get_pipeline().predict(str(path))
     except Exception:
         return []
 
@@ -467,7 +481,7 @@ def extract_text_from_result(json_path: Path, md_path: Path, source_image_path: 
 
 def run_ocr(image_path, output_dir):
     source_image_path = Path(image_path)
-    output = pipeline.predict(str(source_image_path))
+    output = get_pipeline().predict(str(source_image_path))
     texts = []
     artifacts = []
     for i, res in enumerate(output):

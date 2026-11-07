@@ -14,7 +14,6 @@ Usage:
                              [--val-fraction 0.1] [--seed 42] [--max-total-rows N]
 """
 import argparse
-import json
 import os
 import random
 import sys
@@ -24,16 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "train"))
 import vocab  # noqa: E402
-
-
-def load_jsonl(path):
-    records = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    return records
+from jsonl_io import load_jsonl, write_jsonl  # noqa: E402
 
 
 def is_valid_record(record):
@@ -59,12 +49,6 @@ def split_train_val(records, val_fraction, seed):
     random.Random(seed).shuffle(shuffled)
     split_idx = int(len(shuffled) * (1 - val_fraction))
     return shuffled[:split_idx], shuffled[split_idx:]
-
-
-def write_jsonl(path, records):
-    with open(path, "w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
 def print_label_distribution(name, records):
